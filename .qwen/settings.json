@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell *)",
+      "Bash(node *)",
+      "mcp__pycharm__execute_terminal_command"
+    ]
+  },
+  "$version": 3
+}
