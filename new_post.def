@@ -35,13 +35,6 @@ FORMATTING
   FORMAT Zero_real "&_01.10"
 
 ################ ADDRESS DECLARATIONS ################
-  ADDRESS O
-  {
-      FORMAT      Digit_4
-      FORCE       always
-      LEADER      "O"
-  }
-
   ADDRESS G_cutcom
   {
       FORMAT      Digit_2
@@ -82,7 +75,7 @@ FORMATTING
   ADDRESS G_return
   {
       FORMAT      Digit_2
-      FORCE       off
+      FORCE       always
       LEADER      "G"
   }
 
@@ -368,6 +361,13 @@ FORMATTING
       LEADER      "M"
   }
 
+  ADDRESS O
+  {
+      FORMAT      Digit_4
+      FORCE       always
+      LEADER      "O"
+  }
+
   ADDRESS N
   {
       FORMAT      Digit_4
@@ -451,6 +451,11 @@ FORMATTING
 
 
 ############ BLOCK TEMPLATE DECLARATIONS #############
+  BLOCK_TEMPLATE absolute_after_home
+  {
+       Text[G90]
+  }
+
   BLOCK_TEMPLATE absolute_mode
   {
        G_cutcom[$mom_sys_cutcom_code(OFF)]
@@ -668,16 +673,6 @@ FORMATTING
        M_coolant[$mom_sys_coolant_code(OFF)]
   }
 
-  BLOCK_TEMPLATE end_of_program
-  {
-       M_spindle[$mom_sys_spindle_direction_code(OFF)]
-  }
-
-  BLOCK_TEMPLATE end_of_program_1
-  {
-       M[$mom_sys_rewind_code]
-  }
-
   BLOCK_TEMPLATE from
   {
        G_motion[$mom_sys_rapid_code]
@@ -726,9 +721,19 @@ FORMATTING
        M_coolant[^sys_coolant_code(COOLNT_STATUS)]\opt
   }
 
+  BLOCK_TEMPLATE machine_time_info
+  {
+       Text[(TOTAL MACHINE TIME: $mom_my_machine_time MINUTES)]
+  }
+
   BLOCK_TEMPLATE manual_tool_change
   {
        M[$mom_sys_program_stop_code]
+  }
+
+  BLOCK_TEMPLATE operation_time_info
+  {
+       Text[(OPERATION TIME: $mom_my_op_time MINUTES)]
   }
 
   BLOCK_TEMPLATE opstop
@@ -831,6 +836,11 @@ FORMATTING
        M_spindle[$mom_sys_spindle_direction_code($mom_spindle_direction)]\opt
   }
 
+  BLOCK_TEMPLATE return_home
+  {
+       Text[G91 G28 Z0.0]
+  }
+
   BLOCK_TEMPLATE return_motion
   {
        M_spindle[$mom_sys_spindle_direction_code(OFF)]
@@ -839,9 +849,7 @@ FORMATTING
 
   BLOCK_TEMPLATE return_motion_1
   {
-       G_return[$mom_sys_return_code]
-       G_mode[91]
-       Z[0]
+       Text[G91 G28 Z0.0]
        T[$mom_tool_number]
        H[$mom_sys_zero]
   }
@@ -854,9 +862,7 @@ FORMATTING
 
   BLOCK_TEMPLATE return_motion_5
   {
-       G_return[$mom_sys_return_code]
-       G_mode[91]
-       Z[0]
+       Text[G91 G28 Z0.0]
        H[$mom_sys_zero]
   }
 
@@ -901,30 +907,24 @@ FORMATTING
        Text[G54 G05.1 Q1]
   }
 
-  BLOCK_TEMPLATE return_home
-  {
-       Text[G91 G28 Z0.0]
-  }
-
-  BLOCK_TEMPLATE absolute_after_home
-  {
-       Text[G90]
-  }
-
   BLOCK_TEMPLATE stop
   {
        M[$mom_sys_program_stop_code]
   }
 
+  BLOCK_TEMPLATE sync_code
+  {
+       M[$mom_sync_code]
+  }
+
   BLOCK_TEMPLATE tool_change
   {
-       G_mode[$mom_sys_output_code(INCREMENTAL)]
-       G[$mom_sys_return_code]
-       Z[0]
+       Text[G91 G28 Z0.0]
   }
 
   BLOCK_TEMPLATE tool_change_1
   {
+       Text[G90]
        T[$mom_tool_number]
        M[$mom_sys_tool_change_code]
   }
