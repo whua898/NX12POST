@@ -4,7 +4,7 @@
 #
 #    This is a 3-Axis Milling Machine.
 #
-#  Created by wh898 @ Saturday, April 11 2026, 18:11:01 +0800
+#  Created by wh898 @ Saturday, April 11 2026, 17:43:09 +0800
 #  with Post Builder version 12.0.2.
 #
 ########################################################################
@@ -3785,12 +3785,12 @@ proc PB_CMD_smart_file_switch { } {
     if { $op_parent == "" || $op_parent == "NC_PROGRAM" || $op_parent == "PROGRAM" } {
         # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为工序名
         set parent_dir ""
-        set file_target "${mom_operation_name}_${safe_tool_name}"
+        set file_target "${mom_operation_name}"
     } else {
         if { $op_grandparent == "" || $op_grandparent == "NC_PROGRAM" || $op_grandparent == "PROGRAM" } {
             # Level 1: op_parent 是一级目录 (例如 TOP) -> 文件夹为 TOP，文件名为工序名
             set parent_dir $op_parent
-            set file_target "${mom_operation_name}_${safe_tool_name}"
+            set file_target "${mom_operation_name}"
         } else {
             # Level 2 (或更深): op_parent 是二级目录，op_grandparent 是一级目录
             # -> 文件夹为一级目录 (op_grandparent)，文件名为二级目录名 (op_parent)，单一 NC 文件
