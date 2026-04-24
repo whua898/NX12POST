@@ -1,255 +1,247 @@
-# NX12 后处理程序组目录结构修改说明
+# NX12 后处理程序 - 多级程序组自动分目录输出
 
-## 问题描述
+## 📋 项目概述
 
-原始代码中，所有NC文件都被输出到单一的NC目录中，未能根据程序组名称自动创建子目录并生成对应的单独NC文件。
+这是一个为**无刀库机床**开发的智能 UG NX12 后处理器，实现了多级程序组的自动化文件输出管理。
 
-## 修改内容
+### 核心特性
+- ✅ **自动分目录**：一级程序组名作为文件夹名
+- ✅ **智能合并**：二级程序组内所有工序合并为一个 NC 文件
+- ✅ **刀具一致性检查**：防止无刀库机床换刀错误
+- ✅ **无损 Hook 机制**：使用 TCL rename 防止 PB 覆盖
+- ✅ **流氓文件清理**：自动删除不在白名单中的临时文件
 
-### 1. **new_post.tcl 主文件修改**
+## 🎯 三大核心需求
 
-#### (1) 在 `MOM_start_of_program` 中添加用户自定义处理（第409-412行）
+### 1. 选中 NC_PROGRAM 时
+- 一级组（如 `TOP`）→ 生成文件夹 `TOP/`
+- 独立工序（如 `TOP-01`）→ 生成单独 NC 文件 `TOP/TOP-01.nc`
+- 二级组（如 `TOP-03`）→ 生成单一 NC 文件 `TOP/TOP-03.nc`（包含其下所有子工序，单一程序头和尾）
+
+### 2. 选中单个或多个一级程序组时
+```
+选中 TOP → 输出：
+  TOP/TOP-01.nc
+  TOP/TOP-02.nc
+  TOP/TOP-03.nc
+```
+
+### 3. 选中工序或二级组时
+```
+选中 TOP-01（工序）→ 输出：TOP/TOP-01.nc
+选中 TOP-03（二级组）→ 输出：TOP/TOP-03.nc（包含子工序，单一程序头、尾）
+```
+
+**注意**：不会默认生成每个一级程序组合并的 NC 文件。
+
+## 🏗️ 技术架构与核心逻辑
+
+### 1. 无损注入与防覆盖 (Hooking/AOP)
+
+为防止 UG 后处理构造器覆盖自定义代码，使用 TCL 的 `rename` 机制挂载拦截器：
 
 ```tcl
-# 调用用户自定义的程序开始处理逻辑
-if { [CMD_EXIST PB_CMD_user_start_of_program] } {
-   PB_CMD_user_start_of_program
+# 在 PB_CMD_init_smart_grouping 中执行
+rename MOM_start_of_path MOM_start_of_path_orig
+proc MOM_start_of_path { }
+    # 自定义逻辑
+    PB_CMD_smart_file_switch
+    # 调用原生逻辑
+    MOM_start_of_path_orig
 }
 ```
 
-**作用**：在程序启动时调用自定义逻辑，识别并记录程序组名称。
+### 2. 层级判断机制
 
-#### (2) 在 `MOM_start_of_group` 中添加用户自定义处理（第608-611行）
-
-```tcl
-# 调用用户自定义的程序组开始处理逻辑
-if { [CMD_EXIST PB_CMD_user_start_of_group] } {
-   PB_CMD_user_start_of_group
-}
-```
-
-**作用**：在每个程序组开始时调用，为二级程序组创建独立的NC输出文件。
-
-#### (3) 新增 `MOM_end_of_group` 处理器（第615-630行）
+使用自定义堆栈 `my_group_stack` 准确判断程序组层级：
 
 ```tcl
-#=============================================================
-proc MOM_end_of_group { } {
-#=============================================================
-   global group_level
-
-   # 调用用户自定义的程序组结束处理逻辑
-   if { [CMD_EXIST PB_CMD_user_end_of_group] } {
-      PB_CMD_user_end_of_group
-   }
-
-   if { [hiset group_level] } {
-      set group_level [expr {$group_level - 1}]
-   }
-}
+# MOM_start_of_group 拦截器维护映射表
+set my_group_level_map($gname) $pname
+lappend my_group_stack $gname
 ```
 
-**作用**：在每个程序组结束时调用，处理资源清理和文件关闭。
+### 3. 智能文件切换 (PB_CMD_smart_file_switch)
 
-#### (4) 在 `MOM_end_of_program` 中添加用户自定义处理
+**核心逻辑**：
+- Level 0: 根目录下工序 → 不建文件夹，文件名为工序名
+- Level 1: 一级组下工序 → 文件夹为一级组名，文件名为工序名
+- Level 2: 二级组下工序 → 文件夹为一级组名，文件名为二级组名（合并输出）
+
+### 4. 防御性编程与异常隔离
 
 ```tcl
-# 调用用户自定义的程序结束处理逻辑
-if { [CMD_EXIST PB_CMD_user_end_of_program] } {
-   PB_CMD_user_end_of_program
-}
+catch { set op_parent $mom_group_name }
+if { ![info exists my_group_stack] } { set my_group_stack [list] }
+if { [llength [info commands MOM_output_literal]] } { ... }
 ```
 
-**作用**：在整个程序结束时调用，进行最终的清理工作。
+### 5. 终极兜底清理与突破死锁
 
-### 2. **new_post_user.tcl 用户自定义文件修改**
+**白名单机制**：只有经过 `PB_CMD_smart_file_switch` 路由生成的文件才加入 `my_valid_files` 白名单。
 
-#### (1) 改进 `PB_CMD_build_output_path` 函数
+**流氓文件拦截**：在 `MOM_end_of_program` 阶段扫描根目录，对不在白名单中的 `.nc` 和 `.tmp` 文件执行强制删除。
 
-**主要改进**：
-- 支持中文字符的路径名
-- 完善的目录创建错误处理
-- 从多个来源获取输出目录
+### 6. 无刀库机床安全检查
 
-**逻辑**：
-```
-输出目录 = UGII_CAM_OUTPUT_DIR 或 UGII_CAM_POST_DIR的上级目录
-程序组子目录 = 输出目录 / 程序组名
-输出文件 = 程序组子目录 / 操作名.nc
+采用"刀具名称+类型+直径+下半径+总长"构建指纹进行比对，避免仅凭刀号判断导致的误报。
+
+```tcl
+set current_tool_fingerprint "${current_tool_name}|${current_tool_type}|${current_tool_dia}|${current_tool_corner}|${current_tool_length}"
 ```
 
-#### (2) 简化 `PB_CMD_user_start_of_program` 函数
+### 7. 路径规范化
 
-**功能**：
-- 获取程序组名和操作名
-- 记录程序组信息（仅当非主程序时）
+强制使用 `string map {"\\" "/"}` 将所有反斜杠替换为正斜杠，消除路径解析错误。
 
-#### (3) 改进 `PB_CMD_user_start_of_group` 函数
-
-**功能**：
-- 处理二级程序组
-- 为二级程序组创建独立NC文件
-
-#### (4) 简化 `PB_CMD_user_end_of_group` 函数
-
-**功能**：
-- 清理二级程序组相关的全局变量
-
-#### (5) 改进 `PB_CMD_user_end_of_program` 函数
-
-**功能**：
-- 程序结束时清空所有自定义全局变量
-
-## 输出目录结构
-
-修改后，NC文件将按如下结构组织：
+## 📁 实际输出示例
 
 ```
 NC/
-├── 底面-工件1/
-│   ├── GJ1B-01.nc
-│   ├── GJ1B-02.nc
-│   ├── GJ1B-03.nc
-│   ├── GJ1B-04.nc
-│   ├── GJ1B-05.nc
-│   └── 底面-工件1.nc (组合文件)
-├── 底面-工件2/
-│   ├── GJ2B-01.nc
-│   ├── GJ2B-02.nc
-│   ├── GJ2B-03.nc
-│   ├── GJ2B-04.nc
-│   ├── GJ2B-05.nc
-│   └── 底面-工件2.nc (组合文件)
-├── 正面-工件1/
-│   ├── GJ1T-01.nc
-│   ├── GJ1T-011.nc
-│   ├── GJ1T-012.nc
-│   ├── GJ1T-03.nc
-│   ├── GJ1T-04.nc
-│   ├── GJ1T-05.nc
-│   ├── GJ1T-06.nc
-│   ├── GJ1T-07.nc
-│   ├── GJ1T-08.nc
-│   └── 正面-工件1.nc (组合文件)
-└── 正面-工件2/
-    ├── GJ2T-01.nc
-    ├── GJ2T-02.nc
-    ├── GJ2T-03.nc
-    ├── GJ2T-04.nc
-    ├── GJ2T-05.nc
-    ├── GJ2T-06.nc
-    ├── GJ2T-07.nc
-    ├── GJ2T-08.nc
-    ├── GJ2T-09.nc
-    └── 正面-工件2.nc (组合文件)
+├── LEFT2/
+│   ├── LEF2-01.nc
+│   ├── LEF2-02.nc
+│   ├── LEF2-03.nc
+│   ├── LEF2-04.nc
+│   └── LEF2-05.nc
+├── RIG/
+│   ├── RIG-01.nc
+│   ├── RIG-02.nc
+│   ├── RIG-03.nc
+│   ├── RIG-04.nc
+│   └── RIG-05.nc
+├── TOP/
+│   ├── TOP-01.nc
+│   ├── TOP-02.nc
+│   ├── TOP-03.nc
+│   ├── TOP-04.nc
+│   └── TOP-05.nc
+└── ...
 ```
 
-## 核心变量说明
+**说明**：
+- 一级组名（如 `TOP`）作为文件夹名
+- 二级组名（如 `TOP-03`）作为 NC 文件名
+- 同一二级组内的所有工序合并到一个文件中
 
-| 变量名 | 说明 | 作用域 |
-|--------|------|--------|
-| `mom_group_name` | 程序组名称 | 全局 |
-| `group_level` | 程序组嵌套级别 (1=一级, 2+=二级及以上) | 全局 |
-| `mom_operation_name` | 当前操作名称 | 全局 |
-| `mom_sys_output_directory` | 输出目录基路径 | new_post_user.tcl |
-| `mom_sys_output_file_name` | 当前输出文件完整路径 | 全局 |
-| `mom_sys_current_group_file` | 当前程序组文件路径 | new_post_user.tcl |
+## 🔑 核心变量说明
 
-## 调用流程
+| 变量名 | 说明 | 用途 |
+|--------|------|------|
+| `my_group_stack` | 程序组堆栈 | 跟踪当前层级关系 |
+| `my_group_level_map` | 组名映射表 | 存储父子组关系 |
+| `my_valid_files` | 有效文件白名单 | 防止流氓文件残留 |
+| `my_is_merged_op` | 合并操作标志 | 标识是否为二级组工序 |
+| `SUB_GROUP_BASE_TOOL_FINGERPRINT` | 刀具指纹基准 | 二级组内刀具一致性校验 |
+| `my_out_dir` | 输出目录 | 从环境变量或配置获取 |
 
-### 一级程序组（如 "NC_PROGRAM"）
+## 🔄 执行流程
+
+### 初始化阶段
 ```
-MOM_start_of_program
-  └─> PB_CMD_user_start_of_program (记录，但不创建单独文件)
-        └─> 使用默认NC文件输出
-```
-
-### 二级程序组（如 "底面-工件1"）
-```
-MOM_start_of_group (group_level=2)
-  └─> PB_CMD_user_start_of_group
-        └─> PB_CMD_build_output_path
-              └─> 创建 NC/底面-工件1/ 目录
-              └─> 返回 NC/底面-工件1/底面-工件1.nc
-
-(各操作输出到该文件)
-
-MOM_end_of_group
-  └─> PB_CMD_user_end_of_group
-        └─> 清理相关变量
+PB_CMD_kin_start_of_program
+  └─> PB_CMD_init_smart_grouping
+        ├─> rename MOM_start_of_path → MOM_start_of_path_orig
+        ├─> rename MOM_start_of_group → MOM_start_of_group_orig
+        └─> 初始化 my_group_stack, my_valid_files
 ```
 
-## 调试与验证
+### 程序组处理
+```
+MOM_start_of_group (拦截器)
+  ├─> 记录组名到 my_group_level_map
+  ├─> 维护 my_group_stack 堆栈
+  └─> 调用 MOM_start_of_group_orig
 
-### 启用调试输出
+MOM_start_of_path (拦截器)
+  ├─> PB_CMD_smart_file_switch
+  │     ├─> 判断层级 (Level 0/1/2)
+  │     ├─> 构建目标路径
+  │     ├─> 刀具一致性检查
+  │     └─> 执行文件切换
+  └─> MOM_start_of_path_orig
+```
 
-在NX CAM后处理中，注释信息会被输出到NC文件。可通过以下标记跟踪执行过程：
+### 清理阶段
+```
+MOM_end_of_program
+  └─> 扫描并删除不在白名单中的 .nc/.tmp 文件
+```
 
-- `(DEBUG: Group=xxx, Operation=yyy)` - 程序开始时的信息
-- `(DEBUG: group_level=n, mom_group_name=xxx)` - 程序组级别信息
-- `(DEBUG: End of group, level=n)` - 程序组结束时的信息
+## ⚙️ 环境与配置
 
-### 常见问题排查
+### 环境变量
+- `UGII_CAM_OUTPUT_DIR`: NC 文件输出目录
+- `UGII_CAM_POST_DIR`: 后处理文件所在目录
 
-1. **目录未创建**
-   - 检查 UGII_CAM_OUTPUT_DIR 环境变量是否设置
-   - 检查输出目录的写入权限
+### 路径配置
+- 输出路径从 `UGII_CAM_OUTPUT_DIR` 获取
+- 如果未设置，回退到 `UGII_CAM_POST_DIR` 的上级目录
+- 路径自动标准化：反斜杠 → 正斜杠
 
-2. **NC文件名不正确**
-   - 检查程序组名中的特殊字符（<>:"|?* 会被替换为_）
-   - 检查操作名称是否正确传递
+### 容错处理
+- 目录创建失败 → 回退到输出目录本身
+- 文件打开失败 → 使用 catch 捕获错误
+- 变量不存在 → 使用 info exists 检查并提供默认值
 
-3. **文件输出到错误的位置**
-   - 检查 group_level 值是否正确
-   - 检查 mom_group_name 是否正确获取
+## 📂 关键文件说明
 
-## 技术细节
+### 1. new_post.tcl (主后处理文件)
+- **PB_CMD_init_smart_grouping**: 初始化钩子和拦截器
+- **PB_CMD_smart_file_switch**: 核心文件切换逻辑
+- **MOM_start_of_path (重命名后)**: 接管路径切换
+- **MOM_start_of_group (重命名后)**: 维护组堆栈
 
-### 路径处理
-- 支持Windows反斜杠和正斜杠自动转换
-- 清理非法文件名字符（保留中文字符）
-- 自动创建多级目录
+### 2. new_post.def (DEF 模板文件)
+- 定义输出格式和地址
+- 配置 G 代码、坐标格式等
 
-### 错误容错
-- 目录创建失败时回退到输出目录
-- 文件打开失败时使用默认输出
-- 所有文件操作都使用 catch 包装
+### 3. new_post.pui (Post Builder 配置文件)
+- Post Builder 图形界面配置
+- 事件绑定和自定义命令
 
-### 性能优化
-- 仅在必要时创建目录
-- 缓存输出目录路径
-- 避免重复的文件打开关闭操作
+### 4. new_post_user.tcl (用户扩展文件)
+- MOM_end_of_group 占位符
+- 确保 NX 引擎能扫描到该事件
 
-## 修改文件列表
+## 💡 使用建议与注意事项
 
-1. **new_post.tcl** - 主后处理文件
-   - 添加了 MOM_end_of_group 处理器
-   - 在关键事件中添加了用户自定义程序调用
+### 1. 程序组命名规范
+- 一级组：使用有意义的名称（如 `TOP`, `LEFT`, `RIGHT`）
+- 二级组：建议使用 `-数字` 后缀（如 `TOP-01`, `TOP-02`）
+- 避免特殊字符：`<>:"|?*` 会被自动替换为 `_`
 
-2. **new_post_user.tcl** - 用户自定义处理文件
-   - 改进了路径构建逻辑
-   - 完善了程序组处理函数
+### 2. 无刀库机床注意事项
+- 二级组内所有工序必须使用同一把刀具
+- 系统会自动检测刀具一致性并报警
+- T/H/D 寄存器默认为 00
 
-## 后续配置建议
+### 3. 调试技巧
+- 查看 listing file (.lpt) 了解执行流程
+- 检查 NC 文件头注释确认刀具参数
+- 验证输出目录结构是否符合预期
 
-1. **设置输出目录环境变量**
-   ```tcl
-   # 在NX启动前设置
-   set env(UGII_CAM_OUTPUT_DIR) "D:/Users/wh898/PycharmProjects/NX12POST/NC"
-   ```
+### 4. 常见问题
 
-2. **自定义路径规则**
-   - 可在 `PB_CMD_build_output_path` 中修改目录命名规则
-   - 例如：增加日期时间戳、添加工件号等
+**Q: 为什么某些文件没有被正确分类？**
+A: 检查程序组层级是否正确，确保二级组命名符合规范。
 
-3. **扩展功能**
-   - 可在 `PB_CMD_user_start_of_program` 中添加程序头信息
-   - 可在 `PB_CMD_user_end_of_program` 中添加程序尾部信息
-   - 可在 `PB_CMD_user_start_of_group` 中添加组头信息
+**Q: 如何禁用刀具一致性检查？**
+A: 在 `PB_CMD_smart_file_switch` 中注释掉相关检查代码。
+
+**Q: 流氓文件清理太激进怎么办？**
+A: 检查 `my_valid_files` 白名单是否正确维护。
+
+### 5. 扩展开发
+- 可在 `PB_CMD_smart_file_switch` 中添加自定义文件命名规则
+- 可在 `MOM_start_of_path` 拦截器中添加额外的初始化逻辑
+- 可在 DEF 文件中自定义程序头/尾模板
 
 ---
 
-**修改日期**: 2026-03-11
-**NX版本**: NX 12
-**后处理类型**: 3-Axis Mill
+**最后更新**: 2026-04-24  
+**GitHub**: https://github.com/whua898/NX12POST  
+**NX 版本**: NX 12  
+**后处理类型**: 3-Axis Mill  
+**适用机床**: 无刀库数控机床
 
