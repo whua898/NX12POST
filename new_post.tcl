@@ -17,7 +17,17 @@ proc PB_CMD___log_revisions { } {
 # Dummy command to log changes in this post --
 #
 # 15-Jul-2014 gsl - Initial version
+# 07-Jul-2026 AI  - Apply Scheme A group/file output routing
 #
+}
+
+
+#=============================================================
+proc output_literal_gbk { str } {
+#=============================================================
+# 将输出直接传递给写出引擎，引擎会自动转换编码，防止手动二次转换造成乱码
+#=============================================================
+    MOM_output_literal $str
 }
 
 
@@ -30,9 +40,23 @@ proc PB_CMD___log_revisions { } {
 
   if { ![info exists mom_sys_post_initialized] } {
 
+     # 保护并保存 NX 界面传入的 mom_sys_list_output 状态，防止被 ugpost_base.tcl 的初始化冲掉
+     if { [info exists mom_sys_list_output] } {
+        set saved_mom_sys_list_output $mom_sys_list_output
+     }
+
      if { ![info exists mom_sys_ugpost_base_initialized] } {
         source ${cam_post_dir}ugpost_base.tcl
         set mom_sys_ugpost_base_initialized 1
+     }
+
+     # 恢复 NX 界面传入的 mom_sys_list_output 状态
+     if { [info exists saved_mom_sys_list_output] } {
+        set mom_sys_list_output $saved_mom_sys_list_output
+     } else {
+        if { ![info exists mom_sys_list_output] } {
+           set mom_sys_list_output "OFF"
+        }
      }
 
 
@@ -62,7 +86,8 @@ proc PB_CMD___log_revisions { } {
 
 
    ####  Listing File variables
-     set mom_sys_list_output                       "OFF"
+     # set mom_sys_list_output                       "OFF"  ;# 注释掉，让NX界面的"列出输出"复选框生效
+     set mom_sys_ptp_output                        "ON"  ;# 确保NC代码输出开启
      set mom_sys_header_output                     "OFF"
      set mom_sys_list_file_rows                    "40"
      set mom_sys_list_file_columns                 "30"
@@ -1604,19 +1629,18 @@ proc PB_return_move { } {
 #=============================================================
 proc PB_start_of_program { } {
 #=============================================================
+
    if [CMD_EXIST PB_CMD_kin_start_of_program] {
       PB_CMD_kin_start_of_program
    }
 
-   PB_CMD_init_smart_grouping
+   # 初始化智能分组
+   catch { PB_CMD_init_smart_grouping }
+
    MOM_set_seq_off
+   global my_header_written
+   set my_header_written 0
 
-   MOM_do_template rewind_stop_code
-   PB_CMD_program_header
-
-   MOM_do_template start_of_program
-
-   MOM_do_template start_of_program_highspeed
    PB_CMD_init_helix
 
    if [CMD_EXIST PB_CMD_kin_start_of_program_2] {
@@ -1630,6 +1654,8 @@ proc PB_CMD_123 { } {
 #=============================================================
 global mom_machine_time
 global my_prev_machine_time
+global mom_my_op_time
+global mom_my_machine_time
 
 if {![info exists mom_machine_time] || $mom_machine_time == ""} { set mom_machine_time 0.0 }
 if {![info exists my_prev_machine_time] || $my_prev_machine_time == ""} { set my_prev_machine_time 0.0 }
@@ -1638,9 +1664,9 @@ set op_time [expr $mom_machine_time - $my_prev_machine_time]
 set my_prev_machine_time $mom_machine_time
 
 if { [catch {set mom_my_op_time [format "%.2f" $op_time]}] } { set mom_my_op_time "0.00" }
-catch { MOM_do_template operation_time_info }
+catch { MOM_output_literal "(OPERATION TIME: $mom_my_op_time MINUTES)" }
 if { [catch {set mom_my_machine_time [format "%.2f" $mom_machine_time]}] } { set mom_my_machine_time "0.00" }
-catch { MOM_do_template machine_time_info }
+catch { MOM_output_literal "(TOTAL MACHINE TIME: $mom_my_machine_time MINUTES)" }
 }
 
 
@@ -2090,7 +2116,7 @@ proc PB_CMD_check_zero_tool { } {
 global mom_tool_number
 
 if { $mom_tool_number == 0 } {
-          catch { MOM_output_literal "( 【警告】当前刀号为 0，请检查 CAM 刀具设置！ )" }
+          catch { output_literal_gbk "( \u3010\u8b66\u544a\u3011\u5f53\u524d\u5200\u53f7\u4e3a 0\uff0c\u8bf7\u68c0\u67e5 CAM \u5200\u5177\u8bbe\u7f6e\uff01 )" }
       }
 }
 
@@ -2102,14 +2128,21 @@ proc PB_CMD_cleanup_smart_grouping { } {
 # 应在 MOM_end_of_program 中调用
 #=============================================================
     global ptp_file_name my_last_merged_group_name my_last_group_name
-    global my_original_ptp_file_name
+    global my_original_ptp_file_name my_original_ptp_chan mom_output_file_full_name
 
     # 关闭当前打开的文件
     catch { MOM_close_output_file $ptp_file_name }
 
+    # 关闭并释放原始组合输出文件的句柄
+    if { [info exists my_original_ptp_chan] && $my_original_ptp_chan != "" } {
+        catch { close $my_original_ptp_chan }
+        set my_original_ptp_chan ""
+    }
+
     # 恢复原始的 ptp_file_name（如果有的话）
     if { [info exists my_original_ptp_file_name] } {
         set ptp_file_name $my_original_ptp_file_name
+        set mom_output_file_full_name $my_original_ptp_file_name
     }
 
     # 清理状态变量
@@ -2641,11 +2674,11 @@ proc MOM_helix_move { } {
 #=============================================================
 proc PB_CMD_init_smart_grouping { } {
 #=============================================================
-# 初始化智能分组系统的全局变量和拦截器
+# 初始化智能分组系统的全局变量 and 拦截器
 # 应在 MOM_start_of_program 中调用
 #=============================================================
     global my_out_dir my_group_level_map my_valid_files ptp_file_name
-    global my_original_ptp_file_name
+    global my_original_ptp_file_name mom_sys_list_output
 
     # 保存原始的 ptp_file_name，防止 NX 记住被我们修改过的路径
     if { [info exists ptp_file_name] } {
@@ -2654,7 +2687,11 @@ proc PB_CMD_init_smart_grouping { } {
 
     # 1. 锁定真正的根目录 (例如 D:\...\NC)
     if { [info exists ptp_file_name] && $ptp_file_name != "" } {
-        set temp_dir [file dirname [file nativename $ptp_file_name]]
+        set ptp_file_name_utf8 $ptp_file_name
+        catch {
+            set ptp_file_name_utf8 [encoding convertfrom gbk $ptp_file_name]
+        }
+        set temp_dir [file dirname [file nativename $ptp_file_name_utf8]]
         # 剥离可能因为 NX 记忆而残留的子目录，找到真正的根目录
         while {1} {
             set tail [file tail $temp_dir]
@@ -2666,108 +2703,134 @@ proc PB_CMD_init_smart_grouping { } {
         }
         set my_out_dir $temp_dir
     } else {
-        catch { set my_out_dir [file nativename [MOM_ask_env_var UGII_CAM_OUTPUT_DIR]] }
+        set env_dir ""
+        catch { set env_dir [file nativename [MOM_ask_env_var UGII_CAM_OUTPUT_DIR]] }
+        catch {
+            set env_dir [encoding convertfrom gbk $env_dir]
+        }
+        set my_out_dir $env_dir
     }
 
     catch { unset my_group_level_map }
     array set my_group_level_map {}
     set my_valid_files [list]
 
+    global my_has_groups my_header_written
+    set my_has_groups 0
+    set my_header_written 0
+
     # 挂载 MOM_start_of_group 拦截器，维护层级映射表和组栈
-    if { [llength [info commands MOM_start_of_group]] && ![llength [info commands MOM_start_of_group_orig]] } {
-        rename MOM_start_of_group MOM_start_of_group_orig
-        proc MOM_start_of_group { } {
-            global mom_group_name mom_parent_group_name my_group_level_map my_group_stack
-            if { ![info exists my_group_stack] } { set my_group_stack [list] }
+    if { [llength [info commands MOM_start_of_group]] } {
+        if { ![llength [info commands MOM_start_of_group_orig]] } {
+            rename MOM_start_of_group MOM_start_of_group_orig
+        }
+    }
+    proc MOM_start_of_group { } {
+        global mom_group_name mom_parent_group_name my_group_level_map my_group_stack my_has_groups
+        set my_has_groups 1
+        if { ![info exists my_group_stack] } { set my_group_stack [list] }
 
-            set gname ""
-            catch { set gname $mom_group_name }
-            if { $gname == "" } { catch { set gname [MOM_ask_group_name] } }
+        set gname ""
+        catch { set gname $mom_group_name }
+        if { $gname == "" } { catch { set gname [MOM_ask_group_name] } }
 
-            set pname ""
-            catch { set pname $mom_parent_group_name }
+        set pname ""
+        catch { set pname $mom_parent_group_name }
 
-            if { $gname != "" } {
-                set my_group_level_map($gname) $pname
+        if { $gname != "" } {
+            set my_group_level_map($gname) $pname
 
-                # 检查父组是否在栈中，以处理平级组或根组切换
-                if { $pname != "" && $pname != "NC_PROGRAM" && $pname != "PROGRAM" } {
-                    set idx [lsearch -exact $my_group_stack $pname]
-                    if { $idx != -1 } {
-                        # 父组在栈中，截断栈到父组位置
-                        set my_group_stack [lrange $my_group_stack 0 $idx]
-                    } else {
-                        # 父组不在栈中，说明父组被漏掉了（通常是因为用户直接选中了根节点后处理）
-                        # 我们需要将父组补入栈中
-                        set my_group_stack [list $pname]
-                    }
+            # 检查父组是否在栈中，以处理平级组或根组切换
+            if { $pname != "" && $pname != "NC_PROGRAM" && $pname != "PROGRAM" } {
+                set idx [lsearch -exact $my_group_stack $pname]
+                if { $idx != -1 } {
+                    # 父组在栈中，截断栈到父组位置
+                    set my_group_stack [lrange $my_group_stack 0 $idx]
                 } else {
-                    # 根目录组，清空栈
-                    set my_group_stack [list]
+                    # 父组不在栈中，说明父组被漏掉了（通常是因为用户直接选中了根节点后处理）
+                    # 我们需要将父组补入栈中
+                    set my_group_stack [list $pname]
                 }
-
-                lappend my_group_stack $gname
+            } else {
+                # 根目录组，清空栈
+                set my_group_stack [list]
             }
+
+            lappend my_group_stack $gname
+        }
+        if { [llength [info commands MOM_start_of_group_orig]] } {
             catch { MOM_start_of_group_orig }
         }
     }
 
     # 挂载 MOM_end_of_group 拦截器，维护组栈
-    if { ![llength [info commands MOM_end_of_group]] } {
-        proc MOM_end_of_group { } {
-            global my_group_stack
-            if { [info exists my_group_stack] && [llength $my_group_stack] > 0 } {
-                set popped [lindex $my_group_stack end]
-                set my_group_stack [lreplace $my_group_stack end end]
-            }
-        }
-    } else {
+    if { [llength [info commands MOM_end_of_group]] } {
         if { ![llength [info commands MOM_end_of_group_orig]] } {
             rename MOM_end_of_group MOM_end_of_group_orig
-            proc MOM_end_of_group { } {
-                global my_group_stack
-                if { [info exists my_group_stack] && [llength $my_group_stack] > 0 } {
-                    set popped [lindex $my_group_stack end]
-                    set my_group_stack [lreplace $my_group_stack end end]
-                }
-                catch { MOM_end_of_group_orig }
-            }
+        }
+    }
+    proc MOM_end_of_group { } {
+        global my_group_stack
+        if { [info exists my_group_stack] && [llength $my_group_stack] > 0 } {
+            set popped [lindex $my_group_stack end]
+            set my_group_stack [lreplace $my_group_stack end end]
+        }
+        if { [llength [info commands MOM_end_of_group_orig]] } {
+            catch { MOM_end_of_group_orig }
+        }
+    }
+
+    proc PB_CMD_write_header_if_needed { } {
+        global my_header_written
+        if { ![info exists my_header_written] || $my_header_written == 0 } {
+            catch { MOM_set_seq_off }
+            catch { MOM_do_template rewind_stop_code }
+            catch { PB_CMD_program_header }
+            catch { MOM_do_template start_of_program }
+            set my_header_written 1
         }
     }
 
     # 挂载拦截器，在每次下刀前执行文件判断（完全接管文件控制）
-    if { [llength [info commands MOM_start_of_path]] && ![llength [info commands MOM_start_of_path_orig]] } {
-        rename MOM_start_of_path MOM_start_of_path_orig
-        proc MOM_start_of_path { } {
-            global my_is_merged_op mom_operation_name mom_tool_name my_skip_current_merged_group
+    if { [llength [info commands MOM_start_of_path]] } {
+        if { ![llength [info commands MOM_start_of_path_orig]] } {
+            rename MOM_start_of_path MOM_start_of_path_orig
+        }
+    }
+    proc MOM_start_of_path { } {
+        global my_is_merged_op mom_operation_name mom_tool_name my_skip_current_merged_group
 
-            # 1. 先执行我们的智能文件切换逻辑
-            catch { PB_CMD_smart_file_switch }
+        # 1. 先执行我们的智能文件切换逻辑
+        catch { PB_CMD_smart_file_switch }
 
-            # 1.5 针对二级程序组（合并输出），在每个工序开头输出明显的分割注释
-            if { [info exists my_is_merged_op] && $my_is_merged_op == 1 } {
-                if { ![info exists my_skip_current_merged_group] || $my_skip_current_merged_group == 0 } {
-                    # 检查是否启用了工序分隔注释
-                    global my_output_operation_separator
-                    if { ![info exists my_output_operation_separator] || $my_output_operation_separator == 1 } {
-                        catch {
-                            global mom_my_op_tool_str
-                            set mom_my_op_tool_str ""
-                            if { [info exists mom_tool_name] } {
-                                set mom_my_op_tool_str "( --- TOOL      : $mom_tool_name --- )"
-                            }
-                            catch { MOM_output_literal "( )" }
-                            catch { MOM_output_literal "( ************************************************** )" }
-                            catch { MOM_output_literal "( --- OPERATION : $mom_operation_name --- )" }
-                            if { $mom_my_op_tool_str != "" } { catch { MOM_output_literal "$mom_my_op_tool_str" } }
-                            catch { MOM_output_literal "( ************************************************** )" }
-                            catch { MOM_output_literal "( )" }
+        # 1.2 如果尚未写入文件头，现在在当前活动输出文件中写入
+        catch { PB_CMD_write_header_if_needed }
+
+        # 1.5 针对二级程序组（合并输出），在每个工序开头输出明显的分割注释
+        if { [info exists my_is_merged_op] && $my_is_merged_op == 1 } {
+            if { ![info exists my_skip_current_merged_group] || $my_skip_current_merged_group == 0 } {
+                # 检查是否启用了工序分隔注释
+                global my_output_operation_separator
+                if { ![info exists my_output_operation_separator] || $my_output_operation_separator == 1 } {
+                    catch {
+                        global mom_my_op_tool_str
+                        set mom_my_op_tool_str ""
+                        if { [info exists mom_tool_name] } {
+                            set mom_my_op_tool_str "( --- TOOL      : $mom_tool_name --- )"
                         }
+                        catch { MOM_output_literal "( )" }
+                        catch { MOM_output_literal "( ************************************************** )" }
+                        catch { MOM_output_literal "( --- OPERATION : $mom_operation_name --- )" }
+                        if { $mom_my_op_tool_str != "" } { catch { MOM_output_literal "$mom_my_op_tool_str" } }
+                        catch { MOM_output_literal "( ************************************************** )" }
+                        catch { MOM_output_literal "( )" }
                     }
                 }
             }
+        }
 
-            # 2. 再调用原始的下刀逻辑，确保机床状态、刀具等正常初始化
+        # 2. 再调用原始的下刀逻辑，确保机床状态、刀具等正常初始化
+        if { [llength [info commands MOM_start_of_path_orig]] } {
             catch { MOM_start_of_path_orig }
         }
     }
@@ -3369,14 +3432,19 @@ proc PB_CMD_program_header { } {
     set mom_my_z_min [format "%.3f" $z_min]
 
     # 新增：程序头强制 Z 轴回零，防止个别情况撞刀
-    catch { MOM_output_literal "(PROGRAM: $mom_my_prog_name)" }
-    catch { MOM_output_literal "(DATE: $mom_my_date_str)" }
-    catch { MOM_output_literal "(TOOL: $mom_my_tool_name)" }
-    catch { MOM_output_literal "(DIA: $mom_my_dia | CR: $mom_my_cr)" }
-    catch { MOM_output_literal "(MIN LENGTH: $mom_my_min_len | HOLDER: $mom_my_holder)" }
-    catch { MOM_output_literal "(COMP: H$mom_my_h_reg | D$mom_my_d_reg)" }
-    catch { MOM_output_literal "(STOCK: XY $mom_my_stock_p MM | Z $mom_my_stock_f MM)" }
-    catch { MOM_output_literal "(Z-MIN: $mom_my_z_min MM)" }
+    set o_num "0001"
+    if { [regexp {([0-9]+)} $mom_my_prog_name match num] } {
+        set o_num [format "%04d" $num]
+    }
+    catch { output_literal_gbk "O$o_num" }
+    catch { output_literal_gbk "(PROGRAM: $mom_my_prog_name)" }
+    catch { output_literal_gbk "(DATE: $mom_my_date_str)" }
+    catch { output_literal_gbk "(TOOL: $mom_my_tool_name)" }
+    catch { output_literal_gbk "(DIA: $mom_my_dia | CR: $mom_my_cr)" }
+    catch { output_literal_gbk "(MIN LENGTH: $mom_my_min_len | HOLDER: $mom_my_holder)" }
+    catch { output_literal_gbk "(COMP: H$mom_my_h_reg | D$mom_my_d_reg)" }
+    catch { output_literal_gbk "(STOCK: XY $mom_my_stock_p MM | Z $mom_my_stock_f MM)" }
+    catch { output_literal_gbk "(Z-MIN: $mom_my_z_min MM)" }
     # catch { MOM_output_literal "G91 G28 Z0.0" } ;# 注释掉，防止与 tool_change 重复输出
 }
 
@@ -3717,7 +3785,9 @@ proc PB_CMD_smart_file_switch { } {
     global my_group_level_map my_group_stack
     global my_is_merged_op
     global my_current_merged_group my_current_merged_tool my_skip_current_merged_group
+    global my_has_groups
 
+    # 移除 my_has_groups 的限制，确保即使没有触发组事件的顶层或扁平工序也能够被正常分流和输出
     set my_is_merged_op 0
 
     if { ![info exists mom_operation_name] || $mom_operation_name == "" } { return }
@@ -3777,25 +3847,21 @@ proc PB_CMD_smart_file_switch { } {
     set parent_dir ""
     set my_is_merged_op 0
 
-    set safe_tool_name ""
-    if { [info exists mom_tool_name] } {
-        set safe_tool_name [string map [list " " "_" "/" "_" "\\" "_" "*" "_" ":" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"] $mom_tool_name]
-    }
-
     if { $op_parent == "" || $op_parent == "NC_PROGRAM" || $op_parent == "PROGRAM" } {
-        # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为工序名
+        # Scheme A / Level 0: 直接在 NC_PROGRAM 下的工序 -> 根目录，文件名为工序名
         set parent_dir ""
-        set file_target "${mom_operation_name}"
+        set file_target $mom_operation_name
     } else {
         if { $op_grandparent == "" || $op_grandparent == "NC_PROGRAM" || $op_grandparent == "PROGRAM" } {
-            # Level 1: op_parent 是一级目录 (例如 TOP) -> 文件夹为 TOP，文件名为工序名
+            # Scheme A / Level 1: op_parent 是一级组 (例如 TOP)
+            # -> 文件夹为一级组名，一级组下的独立工序以工序名输出
             set parent_dir $op_parent
-            set file_target "${mom_operation_name}"
+            set file_target $mom_operation_name
         } else {
-            # Level 2 (或更深): op_parent 是二级目录，op_grandparent 是一级目录
-            # -> 文件夹为一级目录 (op_grandparent)，文件名为二级目录名 (op_parent)，单一 NC 文件
+            # Scheme A / Level 2 (或更深): op_parent 是二级组，op_grandparent 是一级组
+            # -> 文件夹为一级组名，文件名为二级组名，组内工序合并到单一 NC 文件
             set parent_dir $op_grandparent
-            set file_target "${op_parent}"
+            set file_target $op_parent
             set my_is_merged_op 1
         }
     }
@@ -3874,12 +3940,23 @@ proc PB_CMD_smart_file_switch { } {
     set file_to_delete_after_close ""
 
     set current_ptp ""
-    if { [info exists ptp_file_name] } { set current_ptp [file nativename $ptp_file_name] }
+    if { [info exists ptp_file_name] } {
+        set current_ptp [file nativename $ptp_file_name]
+        catch {
+            set current_ptp [encoding convertfrom gbk [file nativename $ptp_file_name]]
+        }
+    }
 
     # --- 5. 执行文件切换 ---
+    # 确保白名单存在
+    global my_valid_files
+    if { ![info exists my_valid_files] } { set my_valid_files [list] }
+
     # 强制路径标准化比较
-    set norm_current [file normalize $current_ptp]
-    set norm_target [file normalize $target_file_path]
+    set norm_current ""
+    catch { set norm_current [file normalize $current_ptp] }
+    set norm_target ""
+    catch { set norm_target [file normalize $target_file_path] }
 
     # 记录到 listing file 方便调试
     # catch { MOM_output_to_listing_device "DEBUG: OP=$mom_operation_name, CURRENT=$norm_current, TARGET=$norm_target" }
@@ -3912,9 +3989,37 @@ proc PB_CMD_smart_file_switch { } {
                 # 不在白名单里，是 NX 刚生成的流氓文件！
                 # catch { MOM_output_to_listing_device "DEBUG: Deleting rogue file: $current_ptp" }
                 catch { MOM_close_output_file $current_ptp }
-                catch { file delete -force $current_ptp }
-                set current_nc [string map {".ptp" ".nc"} $current_ptp]
-                catch { file delete -force $current_nc }
+
+                # 如果是原始输出文件，我们不能删除它，而是打开一个 append 句柄用于同时记录全部输出
+                global my_original_ptp_file_name my_original_ptp_chan
+                set is_orig 0
+                if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" } {
+                    set orig_ptp_norm ""
+                    catch { set orig_ptp_norm [file normalize $my_original_ptp_file_name] }
+                    if { $norm_current != "" && $norm_current == $orig_ptp_norm } {
+                        set is_orig 1
+                    }
+                }
+                if { $is_orig } {
+                    if { ![info exists my_original_ptp_chan] || $my_original_ptp_chan == "" } {
+                        set opened_ok 0
+                        for {set retry_count 0} {$retry_count < 5} {incr retry_count} {
+                            if { ![catch { open $my_original_ptp_file_name a } chan] } {
+                                set my_original_ptp_chan $chan
+                                catch { fconfigure $my_original_ptp_chan -encoding gbk -buffering none }
+                                set opened_ok 1
+                                break
+                            }
+                            # 如果打开失败，由于 Windows 释放文件锁可能有微延迟，在此等待 50 毫秒后重试
+                            after 50
+                        }
+                    }
+                } else {
+                    # 仅当文件扩展名为 .ptp 且不是用户指定的 .nc 时才允许删除，绝不删除任何 .nc 文件！
+                    if { [file extension $current_ptp] == ".ptp" } {
+                        catch { file delete -force $current_ptp }
+                    }
+                }
             }
         }
 
@@ -3933,7 +4038,10 @@ proc PB_CMD_smart_file_switch { } {
             set ptp_file_name $target_file_path
             set mom_output_file_full_name $target_file_path
 
-            # 加入白名单 (保存标准化路径)
+            global my_header_written
+            set my_header_written 1
+
+            # 加入白名单 (保存标准化 UTF-8 路径)
             if { [lsearch -exact $my_valid_files $norm_target] == -1 } {
                 lappend my_valid_files $norm_target
             }
@@ -3979,7 +4087,7 @@ proc PB_CMD_smart_file_switch { } {
             global mom_my_prog_name mom_my_date_str mom_my_tool_name mom_my_dia mom_my_cr mom_my_min_len mom_my_holder mom_my_h_reg mom_my_d_reg mom_my_stock_p mom_my_stock_f mom_my_z_min
             set mom_my_prog_name ${file_target}
             set mom_my_date_str ${cur_date}
-            set mom_my_tool_name ${mom_tool_name}
+            set mom_my_tool_name [expr {[info exists mom_tool_name] ? $mom_tool_name : "UNKNOWN"}]
             set mom_my_dia [format "%.1f" $t_dia]
             set mom_my_cr [format "%.1f" $t_cr]
             set mom_my_min_len [format "%.2f" $t_min_len]
@@ -3992,14 +4100,19 @@ proc PB_CMD_smart_file_switch { } {
             set z_min [expr {[info exists mom_z_min] ? $mom_z_min : 0.0}]
             set mom_my_z_min [format "%.3f" $z_min]
             catch { MOM_do_template rewind_stop_code }
-            catch { MOM_output_literal "(PROGRAM: $mom_my_prog_name)" }
-            catch { MOM_output_literal "(DATE: $mom_my_date_str)" }
-            catch { MOM_output_literal "(TOOL: $mom_my_tool_name)" }
-            catch { MOM_output_literal "(DIA: $mom_my_dia | CR: $mom_my_cr)" }
-            catch { MOM_output_literal "(MIN LENGTH: $mom_my_min_len | HOLDER: $mom_my_holder)" }
-            catch { MOM_output_literal "(COMP: H$mom_my_h_reg | D$mom_my_d_reg)" }
-            catch { MOM_output_literal "(STOCK: XY $mom_my_stock_p MM | Z $mom_my_stock_f MM)" }
-            catch { MOM_output_literal "(Z-MIN: $mom_my_z_min MM)" }
+            set o_num "0001"
+            if { [regexp {([0-9]+)} $mom_my_prog_name match num] } {
+                set o_num [format "%04d" $num]
+            }
+            catch { output_literal_gbk "O$o_num" }
+            catch { output_literal_gbk "(PROGRAM: $mom_my_prog_name)" }
+            catch { output_literal_gbk "(DATE: $mom_my_date_str)" }
+            catch { output_literal_gbk "(TOOL: $mom_my_tool_name)" }
+            catch { output_literal_gbk "(DIA: $mom_my_dia | CR: $mom_my_cr)" }
+            catch { output_literal_gbk "(MIN LENGTH: $mom_my_min_len | HOLDER: $mom_my_holder)" }
+            catch { output_literal_gbk "(COMP: H$mom_my_h_reg | D$mom_my_d_reg)" }
+            catch { output_literal_gbk "(STOCK: XY $mom_my_stock_p MM | Z $mom_my_stock_f MM)" }
+            catch { output_literal_gbk "(Z-MIN: $mom_my_z_min MM)" }
             # catch { MOM_output_literal "G91 G28 Z0.0" } ;# 注释掉，防止与 tool_change 重复输出
             catch { MOM_do_template start_of_program }
 
@@ -4030,7 +4143,6 @@ proc PB_CMD_smart_file_switch { } {
             catch { MOM_do_template start_of_program_highspeed }
 
             catch { MOM_force once G_mode G_motion G_cutcom G_plane G_adjust S M_spindle M_coolant F T M }
-            catch { MOM_do_template initial_move }
         }
     }
 }
@@ -5113,5 +5225,111 @@ if { [catch {
    MOM_output_to_listing_device "User's Tcl: An error occured while sourcing $cam_post_user_tcl!\n$err"
    MOM_abort "User's Tcl: An error occured while sourcing $cam_post_user_tcl!\n$err"
 }
+
+#=============================================================
+proc PB_CMD_before_output { } {
+#=============================================================
+   global mom_o_buffer my_original_ptp_chan
+
+   # 同时将输出行写入到原始组合输出文件中，确保 NX 信息列表窗口能完整显示 NC 代码
+   if { [info exists my_original_ptp_chan] && $my_original_ptp_chan != "" } {
+      catch { puts $my_original_ptp_chan $mom_o_buffer }
+   }
+}
+
+#=============================================================
+# 重定义 CLOSE_files：防止 warning_file_name 或 lpt_file_name 未定义时崩溃
+#=============================================================
+if { ![info exists closed_files_fix] } {
+   set closed_files_fix 1
+   if { [llength [info commands CLOSE_files]] && ![llength [info commands CLOSE_files_ORIG]] } {
+      rename CLOSE_files CLOSE_files_ORIG
+   }
+}
+proc CLOSE_files { } {
+   global warning_file_name lpt_file_name my_original_ptp_file_name
+   if { ![info exists warning_file_name] } { set warning_file_name "" }
+   if { ![info exists lpt_file_name] } { set lpt_file_name "" }
+   if { [llength [info commands CLOSE_files_ORIG]] } {
+      CLOSE_files_ORIG
+   }
+
+   # Delayed cleanup using VBScript to avoid flashing windows under Windows, and standard rm under Unix
+   global tcl_platform ptp_file_name
+   set files_to_delete [list]
+   if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" && [info exists ptp_file_name] } {
+       set orig_ptp [file normalize $my_original_ptp_file_name]
+       set curr_ptp [file normalize $ptp_file_name]
+       if { $orig_ptp != $curr_ptp } {
+           lappend files_to_delete [file nativename $orig_ptp]
+
+           # Also clean up the other potential extension (.ptp or .nc)
+           if { [string match -nocase "*.nc" $orig_ptp] } {
+               lappend files_to_delete [file nativename [string map -nocase {".nc" ".ptp"} $orig_ptp]]
+           } elseif { [string match -nocase "*.ptp" $orig_ptp] } {
+               lappend files_to_delete [file nativename [string map -nocase {".ptp" ".nc"} $orig_ptp]]
+           }
+       }
+   }
+   if { [info exists lpt_file_name] && $lpt_file_name != "" } {
+       lappend files_to_delete [file nativename [file normalize $lpt_file_name]]
+   }
+
+   # Deduplicate files
+   set unique_files [list]
+   foreach f $files_to_delete {
+       if { $f != "" && [lsearch -exact $unique_files $f] < 0 } {
+           lappend unique_files $f
+       }
+   }
+
+   if { [llength $unique_files] > 0 } {
+       if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
+           # Determine TEMP directory
+           set temp_dir ""
+           catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
+           if { $temp_dir == "" } {
+               if { [info exists ::env(TMP)] } {
+                   set temp_dir $::env(TMP)
+               } elseif { [info exists ::env(TEMP)] } {
+                   set temp_dir $::env(TEMP)
+               } else {
+                   set temp_dir "C:/Temp"
+               }
+           }
+           # Write a silent VBScript to handle delayed deletion without flashing windows
+           set clicks "123456"
+           catch { set clicks [clock clicks] }
+           set vbs_file [file join $temp_dir "nx_cleanup_${clicks}.vbs"]
+           if { [catch {
+               set f [open $vbs_file w]
+               puts $f "WScript.Sleep 4000"
+               puts $f "Set fso = CreateObject(\"Scripting.FileSystemObject\")"
+               puts $f "On Error Resume Next"
+               foreach file $unique_files {
+                   set esc_file [string map {\\ \\\\} $file]
+                   puts $f "If fso.FileExists(\"$esc_file\") Then fso.DeleteFile \"$esc_file\", True"
+               }
+               puts $f "fso.DeleteFile WScript.ScriptFullName"
+               close $f
+               exec wscript.exe //nologo [file nativename $vbs_file] &
+           } err] } {
+               # Fallback if VBScript creation fails
+               foreach file $unique_files {
+                   catch { exec cmd.exe /c "ping 127.0.0.1 -n 5 > nul & del /f /q \"$file\"" & }
+               }
+           }
+       } else {
+           # Unix/Linux delayed deletion
+           set del_cmds [list]
+           foreach file $unique_files {
+               lappend del_cmds "rm -f \"$file\""
+           }
+           set cmd_str [join $del_cmds " ; "]
+           catch { exec sh -c "sleep 4 ; $cmd_str" & }
+       }
+   }
+}
+
 
 

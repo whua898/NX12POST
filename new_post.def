@@ -723,7 +723,7 @@ FORMATTING
 
   BLOCK_TEMPLATE machine_time_info
   {
-       Text[(TOTAL MACHINE TIME: $mom_my_machine_time MINUTES)]
+       Text[(TOTAL MACHINE TIME: mom_my_machine_time MINUTES)]
   }
 
   BLOCK_TEMPLATE manual_tool_change
@@ -733,7 +733,7 @@ FORMATTING
 
   BLOCK_TEMPLATE operation_time_info
   {
-       Text[(OPERATION TIME: $mom_my_op_time MINUTES)]
+       Text[(OPERATION TIME: mom_my_op_time MINUTES)]
   }
 
   BLOCK_TEMPLATE opstop

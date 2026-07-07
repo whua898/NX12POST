@@ -1,4 +1,4 @@
-## POSTBUILDER_VERSION=2011.0.2.0
+## POSTBUILDER_VERSION=2011.0.2.1
 ##############################################################################
 #                                                                            #
 #  This file is used by Post Builder to edit the parameters associated       #
@@ -8,14 +8,14 @@
 #  <WARNING> The contents of this file should not be modified!               #
 #                                                                            #
 ##############################################################################
-#  Created by Postino @ Friday, March 09 2018, 18:00:23 -0800
+#  Created by wh898 @ Saturday, April 11 2026, 18:11:01 +0800
 #  with Post Builder version 12.0.2.
 #============================================================================#
 
 
 ## POST EVENT HANDLER START
-def_file  mill3ax.def
-tcl_file  mill3ax.tcl
+def_file  new_post.def
+tcl_file  new_post.tcl
 ## POST EVENT HANDLER END
 
 
@@ -29,13 +29,86 @@ Generic
 #  CONTROLLER TYPE START
 #  CONTROLLER TYPE END
 #  HISTORY START
-Created with NX/Post Builder Version 8.0.0.4 on Tuesday, October 23, 2012 2:46:23 PM Pacific Daylight Time by ling.
-Saved with NX/Post Builder Version 8.0.0.4 on Tuesday, October 23, 2012 3:17:52 PM Pacific Daylight Time by ling.
-Saved with NX/Post Builder Version 11.0.1.0 on Thursday, August 11, 2016 3:49:09 PM Pacific Daylight Time by Postino.
-Saved with NX/Post Builder Version 11.0.2.0 on Tuesday, January 31, 2017 12:39:04 PM Pacific Standard Time by Postino.
-Saved mill3ax with NX/Post Builder Version 12.0.0.0 on Monday, July 17, 2017 1:58:36 PM Pacific Daylight Time by Postino.
-Saved mill3ax with NX/Post Builder Version 12.0.1.0 on Monday, September 25, 2017 2:47:56 PM Pacific Daylight Time by Postino.
-Saved mill3ax with NX/Post Builder Version 12.0.2.0 on Friday, March 09 2018, 18:00:23 -0800 by Postino.
+Created with UG/Post Builder Version 5.0.0 on Tue Jul 08 17:51:13 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Tue Jul 08 17:58:06 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Tue Jul 08 18:00:04 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:05:09 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:11:25 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:12:03 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:19:04 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:25:27 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:26:20 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:30:17 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:33:16 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:34:11 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:38:13 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 08:38:44 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Wed Jul 09 09:13:05 2008 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Mon Jul 09 10:01:41 2001 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Mon Jul 09 10:06:51 2001 Öйú±ê׼ʱ¼ä by Administrator.
+Saved with UG/Post Builder Version 5.0.0 on Mon Jul 09 10:07:46 2001 Öйú±ê׼ʱ¼ä by Administrator.
+Saved  with NX/后处理构造器 版本 12.0.2.1 on Saturday, October 29 2022, 13:29:13 +0800 by wh898.
+Saved  with NX/后处理构造器 版本 12.0.2.1 on Saturday, October 29 2022, 15:17:36 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 07 2023, 08:15:42 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 07 2023, 08:16:16 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 07 2023, 08:20:29 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Friday, April 07 2023, 17:21:31 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Friday, April 07 2023, 17:22:30 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Friday, April 07 2023, 17:22:37 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:06:33 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:06:42 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:11:27 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:19:36 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:19:45 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:32:54 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Saturday, April 08 2023, 05:33:31 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Thursday, May 18 2023, 11:46:38 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, July 24 2023, 18:49:15 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, July 24 2023, 18:49:23 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, December 08 2025, 14:37:08 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, December 08 2025, 14:38:25 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, December 08 2025, 14:38:40 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, December 08 2025, 15:19:33 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Monday, December 08 2025, 15:19:44 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 20:54:36 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 20:54:54 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 21:06:38 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 21:07:38 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 21:33:03 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 21:48:52 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Wednesday, March 11 2026, 21:49:19 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Thursday, March 12 2026, 02:02:06 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Thursday, March 12 2026, 02:02:17 +0800 by wh898.
+Saved new_post with NX/后处理构造器 版本 12.0.2.1 on Thursday, March 12 2026, 02:13:00 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 11:08:22 +0800 by wh898.
+Created NX12POST with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 13:40:01 +0800 by wh898.
+Created new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 13:41:36 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 13:49:02 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 13:57:51 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 14:01:17 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 16:44:10 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 16:44:16 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 20:38:50 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 22:31:36 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Friday, April 10 2026, 22:31:45 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 06:37:29 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 06:37:38 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 06:58:33 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 06:58:41 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 07:00:48 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 08:17:00 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 08:58:46 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 10:23:26 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 11:54:37 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 12:34:37 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 12:36:52 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 15:31:28 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 15:41:17 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 16:27:08 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 17:06:37 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 17:34:55 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 17:43:09 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 18:11:01 +0800 by wh898.
 #  HISTORY END
 ## POST INFORMATION END
 
@@ -43,13 +116,13 @@ Saved mill3ax with NX/Post Builder Version 12.0.2.0 on Friday, March 09 2018, 18
 ## LISTING FILE START
 Listfileflag_warn              OFF
 Listfileflag                   OFF
-Listfileflag_alt_unit_post_name mill3ax__MM.pui
+Listfileflag_alt_unit_post_name new_post__IN.pui
 Listfileflag_group             OFF
 Listfileflag_verbose           OFF
 Listfileflag_tool              0
 Listfileflag_oper              0
 Listfileflag_lpt_ext           lpt
-Listfileflag_ncfile_ext        ptp
+Listfileflag_ncfile_ext        nc
 Listfileflag_usertcl_name      new_post_user.tcl
 Listfileflag_review            OFF
 Listfileflag_start_path        0
@@ -61,7 +134,7 @@ Listfilelines                  40
 Listfileflag_oper_time         0
 Listfileflag_tool_chng         0
 Listfilecolumn                 30
-Listfileflag_usertcl_check     OFF
+Listfileflag_usertcl_check     ON
 Listfileflag_setup_time        0
 Listfilename                   listfile.lpt
 ## LISTING FILE END
@@ -102,43 +175,43 @@ Listfilename                   listfile.lpt
 "$mom_kin_5th_axis_vector(1)"             "1.0"
 "$mom_kin_5th_axis_vector(2)"             "0.0"
 "$mom_kin_5th_axis_zero"                  "0.0"
-"$mom_kin_arc_output_mode"                "FULL_CIRCLE"
+"$mom_kin_arc_output_mode"                "QUADRANT"
 "$mom_kin_arc_valid_plane"                "XYZ"
 "$mom_kin_clamp_time"                     "2.0"
 "$mom_kin_cycle_plane_change_per_axis"    "0"
 "$mom_kin_cycle_plane_change_to_lower"    "0"
 "$mom_kin_flush_time"                     "2.0"
 "$mom_kin_linearization_flag"             "1"
-"$mom_kin_linearization_tol"              "0.001"
-"$mom_kin_machine_resolution"             ".0001"
+"$mom_kin_linearization_tol"              "0.01"
+"$mom_kin_machine_resolution"             ".001"
 "$mom_kin_machine_type"                   "3_axis_mill"
 "$mom_kin_machine_zero_offset(0)"         "0.0"
 "$mom_kin_machine_zero_offset(1)"         "0.0"
 "$mom_kin_machine_zero_offset(2)"         "0.0"
-"$mom_kin_max_arc_radius"                 "9999.9999"
-"$mom_kin_max_dpm"                        "10"
-"$mom_kin_max_fpm"                        "800"
+"$mom_kin_max_arc_radius"                 "99999.999"
+"$mom_kin_max_dpm"                        "10000"
+"$mom_kin_max_fpm"                        "10000"
 "$mom_kin_max_fpr"                        "100"
 "$mom_kin_max_frn"                        "100"
-"$mom_kin_min_arc_length"                 "0.01"
-"$mom_kin_min_arc_radius"                 "0.0001"
+"$mom_kin_min_arc_length"                 "0.20"
+"$mom_kin_min_arc_radius"                 "0.001"
 "$mom_kin_min_dpm"                        "0.0"
-"$mom_kin_min_fpm"                        "0.1"
-"$mom_kin_min_fpr"                        "0.1"
+"$mom_kin_min_fpm"                        "0.01"
+"$mom_kin_min_fpr"                        "0.01"
 "$mom_kin_min_frn"                        "0.01"
-"$mom_kin_output_unit"                    "IN"
+"$mom_kin_output_unit"                    "MM"
 "$mom_kin_pivot_gauge_offset"             "0.0"
 "$mom_kin_pivot_guage_offset"             ""
-"$mom_kin_post_data_unit"                 "IN"
-"$mom_kin_rapid_feed_rate"                "600"
+"$mom_kin_post_data_unit"                 "MM"
+"$mom_kin_rapid_feed_rate"                "15000"
 "$mom_kin_rotary_axis_method"             "PREVIOUS"
 "$mom_kin_spindle_axis(0)"                "0.0"
 "$mom_kin_spindle_axis(1)"                "0.0"
 "$mom_kin_spindle_axis(2)"                "1.0"
 "$mom_kin_tool_change_time"               "12.0"
-"$mom_kin_x_axis_limit"                   "50"
-"$mom_kin_y_axis_limit"                   "50"
-"$mom_kin_z_axis_limit"                   "50"
+"$mom_kin_x_axis_limit"                   "4000"
+"$mom_kin_y_axis_limit"                   "2600"
+"$mom_kin_z_axis_limit"                   "1500"
 ## KINEMATIC VARIABLES END
 
 ## GCODES START
@@ -182,6 +255,8 @@ Listfilename                   listfile.lpt
 "$mom_sys_spindle_mode_code(RPM)"         "$gPB(g_code,spindle_rpm,name)"
 "$mom_sys_return_code"                    "$gPB(g_code,ret_home,name)"
 "$mom_sys_feed_rate_mode_code(FRN)"       "$gPB(g_code,fr_frn,name)"
+"$mom_sys_feed_rate_mode_code(MMPM)"      "$gPB(g_code,feedmode_mm,pm)"
+"$mom_sys_feed_rate_mode_code(MMPR)"      "$gPB(g_code,feedmode_mm,pr)"
 "$mom_sys_feed_rate_mode_code(IPM)"       "$gPB(g_code,feedmode_in,pm)"
 "$mom_sys_feed_rate_mode_code(IPR)"       "$gPB(g_code,feedmode_in,pr)"
 ## GCODES END
@@ -240,6 +315,7 @@ M_spindle         "$mom_sys_spindle_direction_code($mom_spindle_direction)"  0  
 M_range           "$mom_sys_spindle_range_code($mom_spindle_range)"  0  "Spindle Range M-Code"  0
 M_coolant         "$mom_sys_coolant_code($mom_coolant_status)"  0  "Coolant M-Code"  0
 M                 "$mom_sys_optional_stop_code"  0  "Other M-Codes"  0
+O                 ""  0  ""  1
 N                 ""  0  "Sequence Number"  0
 Text              ""  0  "Text String"  0
 ## MASTER SEQUENCE END
@@ -269,15 +345,15 @@ Text              ""  0  "Text String"  0
 
 ## SEQUENCE START
 #Program Start Sequence Start
-{Start of Program}         {MOM_set_seq_off rewind_stop_code MOM_set_seq_on absolute_mode PB_CMD_fix_RAPID_SET}  {$gPB(event,start_prog,name)}
+{Start of Program}         {PB_CMD_init_smart_grouping MOM_set_seq_off rewind_stop_code PB_CMD_program_header start_of_program start_of_program_highspeed PB_CMD_init_helix}  {$gPB(event,start_prog,name)}
 #Program Start Sequence End
 
 #Operation Start Sequence Start
-{Start of Path}            {PB_CMD_start_of_operation_force_addresses}  {$gPB(event,opr_start,start_path,name)}
+{Start of Path}            {PB_CMD_start_of_operation_force_addresses PB_CMD_record_parent_group}  {$gPB(event,opr_start,start_path,name)}
 {From Move}                {}  {$gPB(event,opr_start,from_move,name)}
 {First Tool}               {}  {$gPB(event,opr_start,fst_tool,name)}
-{Auto Tool Change}         {tool_change PB_CMD_tool_change_force_addresses tool_change_1 tool_change_2}  {$gPB(event,opr_start,auto_tc,name)}
-{Manual Tool Change}       {PB_CMD_tool_change_force_addresses stop}  {$gPB(event,opr_start,manual_tc,name)}
+{Auto Tool Change}         {PB_CMD_check_zero_tool}  {$gPB(event,opr_start,auto_tc,name)}
+{Manual Tool Change}       {PB_CMD_check_zero_tool}  {$gPB(event,opr_start,manual_tc,name)}
 {Initial Move}             {}  {$gPB(event,opr_start,init_move,name)}
 {First Move}               {}  {$gPB(event,opr_start,fst_move,name)}
 {Approach Move}            {}  {$gPB(event,opr_start,appro_move,name)}
@@ -289,12 +365,12 @@ Text              ""  0  "Text String"  0
 ##Tool Path Start
 #Control Functions Start
 {Tool Change}              {}  {$gPB(event,tool_change,name)} {}
-{Length Compensation}      {tool_length_adjust}  {$gPB(event,length_compn,name)} {length_compensation}
+{Length Compensation}      {}  {$gPB(event,length_compn,name)} {length_compensation}
 {Set Modes}                {}  {$gPB(event,set_modes,name)} {set_modes}
 {Spindle RPM}              {spindle_rpm}  {$gPB(event,spindle_rpm,name)} {spindle}
 {Spindle Off}              {spindle_off}  {$gPB(event,spindle_off,name)} {spindle_off}
 {Coolant On}               {}  {$gPB(event,coolant_on,name)} {coolant}
-{Coolant Off}              {coolant_off}  {$gPB(event,coolant_off,name)} {coolant_off}
+{Coolant Off}              {}  {$gPB(event,coolant_off,name)} {coolant_off}
 {Inch Metric Mode}         {}  {$gPB(event,inch_metric_mode,name)} {}
 {Feedrates}                {}  {$gPB(event,feedrates,name)} {}
 {Cutcom On}                {}  {$gPB(event,cutcom_on,name)} {cutcom}
@@ -305,17 +381,17 @@ Text              ""  0  "Text String"  0
 {Prefun}                   {prefun}  {$gPB(event,prefun,name)} {prefun}
 {Load Tool}                {}  {$gPB(event,loadtool,name)} {mill_tool_change}
 {Stop}                     {stop}  {$gPB(event,stop,name)} {stop}
-{Tool Preselect}           {tool_preselect}  {$gPB(event,toolpreselect,name)} {tool_preselect}
+{Tool Preselect}           {}  {$gPB(event,toolpreselect,name)} {tool_preselect}
 #Control Functions End
 
 #Motions Start
-{Linear Move}              {PB_CMD_suppress_linear_block_plane_code linear_move}  {$gPB(event,linear,name)}
+{Linear Move}              {linear_move}  {$gPB(event,linear,name)}
 {Circular Move}            {circular_move}  {$gPB(event,circular,name)}
 {Rapid Move}               {rapid_traverse rapid_spindle}  {$gPB(event,rapid,name)}
 #Motions End
 
 #Cycles Start
-{Cycle Parameters}         {post_cycle_set}  {$gPB(event,cycle,com_param,name)}
+{Cycle Parameters}         {PB_CMD_set_cycle_plane post_cycle_set}  {Cycle Parameters}
 {Cycle Off}                {cycle_off}  {$gPB(event,cycle,cycle_off,name)}
 {Cycle Plane Change}       {}  {$gPB(event,cycle,plane_chng,name)}
 {Drill}                    {cycle_drill}  {$gPB(event,cycle,drill,name)}
@@ -350,7 +426,7 @@ Text              ""  0  "Text String"  0
 #Operation End Sequence End
 
 #Program End Sequence Start
-{End of Program}           {end_of_program MOM_set_seq_off rewind_stop_code}  {$gPB(event,end_prog,name)}
+{End of Program}           {PB_CMD_123 MOM_set_seq_off PB_CMD_custom_program_footer rewind_stop_code PB_CMD_cleanup_smart_grouping PB_CMD_SUB_GROUP_BASE_TOOL_FINGERPRINT}  {$gPB(event,end_prog,name)}
 #Program End Sequence End
 
 #Linked Posts Sequence Start
@@ -361,11 +437,6 @@ Text              ""  0  "Text String"  0
 ## SEQUENCE END
 
 ## EVENTS ELEMENT EXECUTION START
-{Start of Program} \
-        {3 NULL 0 {G_cutcom G_plane G_mode}}
-{Auto Tool Change} \
-        {0 NULL 0 {G_mode G Z}} \
-        {2 NULL 0 {T M}}
 {Spindle RPM} \
         {0 NULL 0 {S M_spindle}}
 ## EVENTS ELEMENT EXECUTION END
@@ -435,20 +506,20 @@ Text              ""  0  "Text String"  0
                 {"$gPB(event,inch_metric_mode,g_code,english)" 2  a $mom_sys_unit_code(IN) UI_PB_tpth_EntryCallBack null} \
                 {"$gPB(event,inch_metric_mode,g_code,metric)" 2  a $mom_sys_unit_code(MM) UI_PB_tpth_EntryCallBack null}}}
 {Feedrates} \
-     {{"$gPB(event,feedrates,ipm_mode)" 4  V} \
+     {{"$gPB(event,feedrates,mmpm_mode)" 4  V} \
         {{"null" 1  V} \
-                {"$gPB(event,feedrates,g_code)" 2  a $mom_sys_feed_rate_mode_code(IPM) UI_PB_tpth_EntryCallBack null}} \
+                {"$gPB(event,feedrates,g_code)" 2  a $mom_sys_feed_rate_mode_code(MMPM) UI_PB_tpth_EntryCallBack null}} \
         {{"$gPB(event,feedrates,format)" 1  V} \
-                {"null" 9  n $mom_sys_feed_param(IPM,format) UI_PB_tpth_EditFeedFmt null}} \
+                {"null" 9  n $mom_sys_feed_param(MMPM,format) UI_PB_tpth_EditFeedFmt null}} \
         {{"null" 1  V} \
                 {"$gPB(event,feedrates,max)" 2  f $mom_kin_max_fpm null null}} \
         {{"null" 1  V} \
                 {"$gPB(event,feedrates,min)" 2  f $mom_kin_min_fpm null null}}} \
-     {{"$gPB(event,feedrates,ipr_mode)" 4  V} \
+     {{"$gPB(event,feedrates,mmpr_mode)" 4  V} \
         {{"null" 1  V} \
-                {"$gPB(event,feedrates,g_code)" 2  a $mom_sys_feed_rate_mode_code(IPR) UI_PB_tpth_EntryCallBack null}} \
+                {"$gPB(event,feedrates,g_code)" 2  a $mom_sys_feed_rate_mode_code(MMPR) UI_PB_tpth_EntryCallBack null}} \
         {{"$gPB(event,feedrates,format)" 1  V} \
-                {"null" 9  n $mom_sys_feed_param(IPR,format) UI_PB_tpth_EditFeedFmt null}} \
+                {"null" 9  n $mom_sys_feed_param(MMPR,format) UI_PB_tpth_EditFeedFmt null}} \
         {{"null" 1  V} \
                 {"$gPB(event,feedrates,max)" 2  f $mom_kin_max_fpr null null}} \
         {{"null" 1  V} \
@@ -464,11 +535,11 @@ Text              ""  0  "Text String"  0
                 {"$gPB(event,feedrates,min)" 2  f $mom_kin_min_frn null null}}} \
      {{"$gPB(event,feedrates,mode,label)" 3  V} \
         {{"null" 1  V} \
-                {"$gPB(event,feedrates,mode,cutting)" 8  n $mom_sys_contour_feed_mode(LINEAR) null {"IPM" "IPR"}}} \
+                {"$gPB(event,feedrates,mode,cutting)" 8  n $mom_sys_contour_feed_mode(LINEAR) null {"MMPM" "MMPR"}}} \
         {{"null" 1  V} \
-                {"$gPB(event,feedrates,mode,rapid)" 8  n $mom_sys_rapid_feed_mode(LINEAR) null {"IPM" "IPR"}}} \
+                {"$gPB(event,feedrates,mode,rapid)" 8  n $mom_sys_rapid_feed_mode(LINEAR) null {"MMPM" "MMPR"}}} \
         {{"null" 1  V} \
-                {"$gPB(event,feedrates,cycle)" 8  n $mom_sys_cycle_feed_mode null {"IPM" "IPR" "Auto"}}}}
+                {"$gPB(event,feedrates,cycle)" 8  n $mom_sys_cycle_feed_mode null {"MMPM" "MMPR" "Auto"}}}}
 {Cutcom On} \
      {{"$gPB(event,cutcom_on,g_code)" 1  V} \
         {{"null" 2  V} \
@@ -599,11 +670,13 @@ Text              ""  0  "Text String"  0
       {"$mom_sys_adjust_code_minus" "44" "Tool Len Adjust Minus"} \
       {"$mom_sys_adjust_cancel_code" "49" "Cancel Tool Len Adjust"}
 {G_feed} \
-      {"$mom_sys_feed_rate_mode_code($feed_mode)" "\$mom_sys_feed_rate_mode_code(IPM)" "Feed Rate Mode"} \
-      {"$mom_sys_feed_rate_mode_code(IPM)" "94" "IPM Feed Rate Mode"} \
-      {"$mom_sys_feed_rate_mode_code(IPR)" "95" "IPR Feed Rate Mode"} \
+      {"$mom_sys_feed_rate_mode_code($feed_mode)" "\$mom_sys_feed_rate_mode_code(MMPM)" "Feed Rate Mode"} \
+      {"$mom_sys_feed_rate_mode_code(MMPM)" "94" "MMPM Feed Rate Mode"} \
+      {"$mom_sys_feed_rate_mode_code(MMPR)" "95" "MMPM Feed Rate Mode"} \
       {"$mom_sys_feed_rate_mode_code(FRN)" "93" "FRN Feed Rate Mode"} \
-      {"$mom_sys_feed_rate_mode_code(DPM)" "94" "DPM Feed Rate Mode"}
+      {"$mom_sys_feed_rate_mode_code(DPM)" "94" "DPM Feed Rate Mode"} \
+      {"$mom_sys_feed_rate_mode_code(IPM)" "94" "IPM Feed Rate Mode"} \
+      {"$mom_sys_feed_rate_mode_code(IPR)" "95" "IPR Feed Rate Mode"}
 {G_spin} \
       {"$mom_sys_spindle_mode_code($mom_spindle_status)" "\$mom_sys_spindle_mode_code(RPM)" "Spindle output Mode (RPM/SFM)"} \
       {"$mom_sys_spindle_mode_code(SFM)" "96" "Spindle output (CSS)"} \
@@ -743,6 +816,8 @@ Text              ""  0  "Text String"  0
       {"$mom_sys_end_of_program_code" "2" "End Of program"} \
       {"$mom_sys_rewind_code" "30" "Rewind Program"} \
       {"$mom_sys_tool_change_code" "6" "Tool Change"}
+{O} \
+      {"" "" ""}
 {N} \
       {"$mom_seqnum" "" "Sequence Number"}
 {Text} \
@@ -750,7 +825,7 @@ Text              ""  0  "Text String"  0
 {New_Address} \
       {"" "" ""}
 {PB_Dummy} \
-      {"User_Def_Axis_Limit_Act" "\{\}" ""} \
+      {"User_Def_Axis_Limit_Act" "" ""} \
       {"Link_Char" "" ""} \
       {"Include_UDE" "1" ""} \
       {"UDE_File_Name" "\$UGII_CAM_USER_DEF_EVENT_DIR/ude.cdl" ""} \
@@ -781,7 +856,7 @@ Text              ""  0  "Text String"  0
       {"$spin_dwell_time" "0" ""} \
       {"$cir_record_output" "YES" ""} \
       {"$rap_wrk_pln_chg" "1" ""} \
-      {"$rap_mode_trav_rate" "0" ""} \
+      {"$rap_mode_trav_rate" "1" ""} \
       {"$rap_mode_trav_value" "100" ""} \
       {"$cycle_rapto_opt" "R" ""} \
       {"$cycle_recto_opt" "None" ""} \
@@ -855,47 +930,77 @@ Text              ""  0  "Text String"  0
       {"$mom_sys_leader(Z)" "Z" ""} \
       {"$mom_sys_leader(fourth_axis)" "B" ""} \
       {"$mom_sys_leader(fifth_axis)" "B" ""} \
-      {"$mom_sys_contour_feed_mode(LINEAR)" "IPM" ""} \
-      {"$mom_sys_rapid_feed_mode(LINEAR)" "IPM" ""} \
-      {"$mom_sys_cycle_feed_mode" "IPM" ""} \
+      {"$mom_sys_contour_feed_mode(LINEAR)" "MMPM" ""} \
+      {"$mom_sys_rapid_feed_mode(LINEAR)" "MMPM" ""} \
+      {"$mom_sys_cycle_feed_mode" "MMPM" ""} \
       {"$mom_sys_feed_param(IPM,format)" "Feed_IPM" ""} \
       {"$mom_sys_feed_param(IPR,format)" "Feed_IPR" ""} \
       {"$mom_sys_feed_param(FRN,format)" "Feed_INV" ""} \
       {"$mom_sys_vnc_rapid_dogleg" "1" ""} \
       {"$mom_sys_prev_mach_head" "" ""} \
-      {"$mom_sys_curr_mach_head" "" ""}
+      {"$mom_sys_curr_mach_head" "" ""} \
+      {"$mom_sys_feed_param(MMPM,format)" "Feed_MMPM" ""} \
+      {"$mom_sys_feed_param(MMPR,format)" "Feed_MMPR" ""} \
+      {"$mom_sys_advanced_turbo_output" "0" ""}
 {Command} \
       {"Custom Command" "" "New Custom Command"} \
       {"MOM_set_seq_off" "" "MOM Command"} \
       {"MOM_set_seq_on" "" "MOM Command"} \
+      {"PB_CMD_123" "" "Custom Command"} \
       {"PB_CMD_FEEDRATE_NUMBER" "" "Custom Command"} \
+      {"PB_CMD_MOM_insert" "" "Custom Command"} \
+      {"PB_CMD_MOM_operator_message" "" "Custom Command"} \
+      {"PB_CMD_MOM_opskip_off" "" "Custom Command"} \
+      {"PB_CMD_MOM_opskip_on" "" "Custom Command"} \
+      {"PB_CMD_MOM_pprint" "" "Custom Command"} \
+      {"PB_CMD_MOM_text" "" "Custom Command"} \
+      {"PB_CMD_SUB_GROUP_BASE_TOOL_FINGERPRINT" "" "Custom Command"} \
       {"PB_CMD___log_revisions" "" "Custom Command"} \
       {"PB_CMD__config_post_options" "" "Custom Command"} \
       {"PB_CMD__manage_part_attributes" "" "Custom Command"} \
       {"PB_CMD_abort_event" "" "Custom Command"} \
       {"PB_CMD_ask_machine_type" "" "Custom Command"} \
+      {"PB_CMD_before_motion" "" "Custom Command"} \
+      {"PB_CMD_build_output_path" "" "Custom Command"} \
       {"PB_CMD_cancel_suppress_force_once_per_event" "" "Custom Command"} \
+      {"PB_CMD_check_zero_tool" "" "Custom Command"} \
+      {"PB_CMD_cleanup_smart_grouping" "" "Custom Command"} \
+      {"PB_CMD_count_group_depth" "" "Custom Command"} \
+      {"PB_CMD_custom_program_footer" "" "Custom Command"} \
       {"PB_CMD_enable_ball_center_output" "" "Custom Command"} \
       {"PB_CMD_end_of_alignment_character" "" "Custom Command"} \
       {"PB_CMD_fix_RAPID_SET" "" "Custom Command"} \
+      {"PB_CMD_get_group_hierarchy" "" "Custom Command"} \
+      {"PB_CMD_get_parent_group" "" "Custom Command"} \
+      {"PB_CMD_get_parent_group_name" "" "Custom Command"} \
+      {"PB_CMD_handle_sync_event" "" "Custom Command"} \
+      {"PB_CMD_init_helix" "" "Custom Command"} \
+      {"PB_CMD_init_smart_grouping" "" "Custom Command"} \
       {"PB_CMD_kin_abort_event" "" "Custom Command"} \
+      {"PB_CMD_kin_before_motion" "" "Custom Command"} \
       {"PB_CMD_kin_before_output" "" "Custom Command"} \
       {"PB_CMD_kin_end_of_path" "" "Custom Command"} \
       {"PB_CMD_kin_feedrate_set" "" "Custom Command"} \
+      {"PB_CMD_kin_handle_sync_event" "" "Custom Command"} \
       {"PB_CMD_kin_init_new_iks" "" "Custom Command"} \
       {"PB_CMD_kin_init_probing_cycles" "" "Custom Command"} \
       {"PB_CMD_kin_set_csys" "" "Custom Command"} \
       {"PB_CMD_kin_start_of_path" "" "Custom Command"} \
       {"PB_CMD_kin_start_of_program" "" "Custom Command"} \
       {"PB_CMD_negate_R_value" "" "Custom Command"} \
+      {"PB_CMD_output_file_header" "" "Custom Command"} \
       {"PB_CMD_pause" "" "Custom Command"} \
+      {"PB_CMD_program_header" "" "Custom Command"} \
+      {"PB_CMD_record_parent_group" "" "Custom Command"} \
       {"PB_CMD_reload_iks_parameters" "" "Custom Command"} \
       {"PB_CMD_restore_work_plane_change" "" "Custom Command"} \
       {"PB_CMD_revise_new_iks" "" "Custom Command"} \
       {"PB_CMD_run_postprocess" "" "Custom Command"} \
+      {"PB_CMD_sanitize_filename" "" "Custom Command"} \
       {"PB_CMD_set_csys" "" "Custom Command"} \
       {"PB_CMD_set_cycle_plane" "" "Custom Command"} \
       {"PB_CMD_set_principal_axis" "" "Custom Command"} \
+      {"PB_CMD_smart_file_switch" "" "Custom Command"} \
       {"PB_CMD_start_of_alignment_character" "" "Custom Command"} \
       {"PB_CMD_start_of_operation_force_addresses" "" "Custom Command"} \
       {"PB_CMD_suppress_linear_block_plane_code" "" "Custom Command"} \
