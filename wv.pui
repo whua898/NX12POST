@@ -49,7 +49,7 @@ Listfileflag_tool              0
 Listfileflag_oper              0
 Listfileflag_lpt_ext           lpt
 Listfileflag_ncfile_ext        NC
-Listfileflag_usertcl_name      new_post_user.tcl
+Listfileflag_usertcl_name      wv_user.tcl
 Listfileflag_review            OFF
 Listfileflag_start_path        0
 Listfileflag_warn_opt          FILE
@@ -60,7 +60,7 @@ Listfilelines                  40
 Listfileflag_oper_time         0
 Listfileflag_tool_chng         0
 Listfilecolumn                 30
-Listfileflag_usertcl_check     OFF
+Listfileflag_usertcl_check     ON
 Listfileflag_setup_time        0
 Listfilename                   listfile.lpt
 ## LISTING FILE END

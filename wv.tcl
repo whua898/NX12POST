@@ -4198,6 +4198,38 @@ return
 }
 
 
+set cam_post_user_tcl "wv_user.tcl"
+
+#***************************
+# Source in wv user's tcl file.
+#***************************
+set cam_post_dir [MOM_ask_env_var UGII_CAM_POST_DIR]
+set ugii_version [string trimleft [MOM_ask_env_var UGII_VERSION] v]
+
+if { [catch {
+   if { $ugii_version >= 5 } {
+      if { [file exists "[file dirname [info script]]/$cam_post_user_tcl"] } {
+         source "[file dirname [info script]]/$cam_post_user_tcl"
+      } elseif { [file exists "${cam_post_dir}$cam_post_user_tcl"] } {
+         source "${cam_post_dir}$cam_post_user_tcl"
+      } elseif { [file exists "$cam_post_user_tcl"] } {
+         source "$cam_post_user_tcl"
+      } else {
+         MOM_output_to_listing_device "User's Tcl: $cam_post_user_tcl not found!"
+      }
+   } else {
+      if { [file exists "${cam_post_dir}$cam_post_user_tcl"] } {
+         source "${cam_post_dir}$cam_post_user_tcl"
+      } else {
+         MOM_output_to_listing_device "User's Tcl: ${cam_post_dir}$cam_post_user_tcl not found!"
+      }
+   }
+} err] } {
+   MOM_output_to_listing_device "User's Tcl: An error occured while sourcing $cam_post_user_tcl!\n$err"
+   MOM_abort "User's Tcl: An error occured while sourcing $cam_post_user_tcl!\n$err"
+}
+
+
 if [info exists mom_sys_start_of_program_flag] {
    if [llength [info commands PB_CMD_kin_start_of_program] ] {
       PB_CMD_kin_start_of_program
