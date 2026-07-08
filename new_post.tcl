@@ -2118,6 +2118,28 @@ if { $mom_tool_number == 0 } {
 
 
 #=============================================================
+proc PB_CMD_remember_cleanup_file { cleanup_file } {
+#=============================================================
+# 记录需要延迟删除的 NX 原始组合输出文件及其备用扩展名
+#=============================================================
+    global my_cleanup_files
+    if { $cleanup_file == "" } { return }
+
+    set cleanup_norm ""
+    catch { set cleanup_norm [file normalize $cleanup_file] }
+    if { $cleanup_norm == "" } { return }
+
+    if { ![info exists my_cleanup_files] } { set my_cleanup_files [list] }
+    lappend my_cleanup_files [file nativename $cleanup_norm]
+
+    if { [string match -nocase "*.nc" $cleanup_norm] } {
+        lappend my_cleanup_files [file nativename "[file rootname $cleanup_norm].ptp"]
+    } elseif { [string match -nocase "*.ptp" $cleanup_norm] } {
+        lappend my_cleanup_files [file nativename "[file rootname $cleanup_norm].nc"]
+    }
+}
+
+
 proc PB_CMD_cleanup_smart_grouping { } {
 #=============================================================
 # 清理智能分组系统的资源
@@ -2125,6 +2147,18 @@ proc PB_CMD_cleanup_smart_grouping { } {
 #=============================================================
     global ptp_file_name my_last_merged_group_name my_last_group_name
     global my_original_ptp_file_name my_original_ptp_chan mom_output_file_full_name
+    global my_cleanup_files
+
+    # 在恢复 ptp_file_name 前记录 NX 原始组合输出文件，供 CLOSE_files 延迟清理
+    if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" && [info exists ptp_file_name] } {
+        set cleanup_orig ""
+        set cleanup_curr ""
+        catch { set cleanup_orig [file normalize $my_original_ptp_file_name] }
+        catch { set cleanup_curr [file normalize $ptp_file_name] }
+        if { $cleanup_orig != "" && $cleanup_curr != "" && $cleanup_orig != $cleanup_curr } {
+            catch { PB_CMD_remember_cleanup_file $cleanup_orig }
+        }
+    }
 
     # 关闭当前打开的文件
     catch { MOM_close_output_file $ptp_file_name }
@@ -3969,6 +4003,15 @@ proc PB_CMD_smart_file_switch { } {
     set norm_target ""
     catch { set norm_target [file normalize $target_file_path] }
 
+    # 只要智能输出目标不是 NX 原始组合输出文件，就登记原始组合文件待清理
+    if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" } {
+        set norm_original ""
+        catch { set norm_original [file normalize $my_original_ptp_file_name] }
+        if { $norm_original != "" && $norm_target != "" && $norm_original != $norm_target } {
+            catch { PB_CMD_remember_cleanup_file $norm_original }
+        }
+    }
+
     # 记录到 listing file 方便调试
     # catch { MOM_output_to_listing_device "DEBUG: OP=$mom_operation_name, CURRENT=$norm_current, TARGET=$norm_target" }
 
@@ -4012,6 +4055,8 @@ proc PB_CMD_smart_file_switch { } {
                     }
                 }
                 if { $is_orig } {
+                    # 原始组合输出文件（如 L型安装板_stp.nc）必须立即登记，避免结束时变量已恢复而漏删
+                    catch { PB_CMD_remember_cleanup_file $my_original_ptp_file_name }
                     if { ![info exists my_original_ptp_chan] || $my_original_ptp_chan == "" } {
                         set opened_ok 0
                         for {set retry_count 0} {$retry_count < 5} {incr retry_count} {
@@ -5262,7 +5307,7 @@ if { ![info exists closed_files_fix] } {
    }
 }
 proc CLOSE_files { } {
-   global warning_file_name lpt_file_name my_original_ptp_file_name my_original_ptp_chan
+   global warning_file_name lpt_file_name my_original_ptp_file_name my_original_ptp_chan my_cleanup_files
    if { ![info exists warning_file_name] } { set warning_file_name "" }
    if { ![info exists lpt_file_name] } { set lpt_file_name "" }
    if { [llength [info commands CLOSE_files_ORIG]] } {
@@ -5276,9 +5321,20 @@ proc CLOSE_files { } {
       set my_original_ptp_chan ""
    }
 
-   # Delayed cleanup using VBScript to avoid flashing windows under Windows, and standard rm under Unix
+   # Delayed cleanup with debug logging.
+   # NX "列出输出" opens the Information Window and displays the generated NC output file.
+   # ugpost_base also creates lpt_file_name for commentary/listing data when mom_sys_list_output is ON.
+   # In this post, the UI-selected ptp_file_name is only a temporary combined NC preview;
+   # the real NC programs are the split child files, so the combined preview and .lpt are deleted after NX reads them.
    global tcl_platform ptp_file_name
+
+
    set files_to_delete [list]
+   if { [info exists my_cleanup_files] } {
+       foreach cleanup_file $my_cleanup_files {
+           lappend files_to_delete $cleanup_file
+       }
+   }
    if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" && [info exists ptp_file_name] } {
        set orig_ptp [file normalize $my_original_ptp_file_name]
        set curr_ptp [file normalize $ptp_file_name]
@@ -5287,9 +5343,9 @@ proc CLOSE_files { } {
 
            # Also clean up the other potential extension (.ptp or .nc)
            if { [string match -nocase "*.nc" $orig_ptp] } {
-               lappend files_to_delete [file nativename [string map -nocase {".nc" ".ptp"} $orig_ptp]]
+               lappend files_to_delete [file nativename "[file rootname $orig_ptp].ptp"]
            } elseif { [string match -nocase "*.ptp" $orig_ptp] } {
-               lappend files_to_delete [file nativename [string map -nocase {".ptp" ".nc"} $orig_ptp]]
+               lappend files_to_delete [file nativename "[file rootname $orig_ptp].nc"]
            }
        }
    }
@@ -5297,7 +5353,8 @@ proc CLOSE_files { } {
        lappend files_to_delete [file nativename [file normalize $lpt_file_name]]
    }
 
-   # Deduplicate files
+   # Deduplicate files. The selected NX output is a temporary combined preview file too,
+   # used only by "列出输出" and should also be deleted after NX has read it.
    set unique_files [list]
    foreach f $files_to_delete {
        if { $f != "" && [lsearch -exact $unique_files $f] < 0 } {
@@ -5305,9 +5362,23 @@ proc CLOSE_files { } {
        }
    }
 
+   catch { unset my_cleanup_files }
+
+   # NX 信息窗口可能会短时间占用原始组合输出文件。
+   # 默认先等 10 秒，再由后台脚本持续重试删除；如需调整初始等待，可预先设置 my_cleanup_delay_ms。
+   global my_cleanup_delay_ms
+   if { ![info exists my_cleanup_delay_ms] || $my_cleanup_delay_ms == "" } {
+       set my_cleanup_delay_ms 10000
+   }
+   if { [catch { scan $my_cleanup_delay_ms "%d" my_cleanup_delay_ms_dec }]
+        || ![info exists my_cleanup_delay_ms_dec]
+        || $my_cleanup_delay_ms_dec < 10000 } {
+       set my_cleanup_delay_ms_dec 10000
+   }
+   set my_cleanup_delay_sec [expr {$my_cleanup_delay_ms_dec / 1000}]
+
    if { [llength $unique_files] > 0 } {
        if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
-           # Determine TEMP directory
            set temp_dir ""
            catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
            if { $temp_dir == "" } {
@@ -5319,36 +5390,69 @@ proc CLOSE_files { } {
                    set temp_dir "C:/Temp"
                }
            }
-           # Write a silent VBScript to handle delayed deletion without flashing windows
+
            set clicks "123456"
            catch { set clicks [clock clicks] }
-           set vbs_file [file join $temp_dir "nx_cleanup_${clicks}.vbs"]
+           set cleanup_cmd [file nativename [file join $temp_dir "nx_cleanup_${clicks}.cmd"]]
+           set cleanup_log [file nativename [file join $temp_dir "nx_cleanup_latest.log"]]
+
            if { [catch {
-               set f [open $vbs_file w]
-               puts $f "WScript.Sleep 4000"
-               puts $f "Set fso = CreateObject(\"Scripting.FileSystemObject\")"
-               puts $f "On Error Resume Next"
+               set f [open $cleanup_cmd w]
+               puts $f "@echo off"
+               puts $f "setlocal enableextensions"
+               puts $f "echo ==== NX cleanup start %date% %time% ==== > \"$cleanup_log\""
+               puts $f "echo Delay seconds: $my_cleanup_delay_sec >> \"$cleanup_log\""
+               puts $f "ping 127.0.0.1 -n [expr {$my_cleanup_delay_sec + 1}] > nul"
+               puts $f "echo After delay %date% %time% >> \"$cleanup_log\""
                foreach file $unique_files {
-                   set esc_file [string map {\\ \\\\} $file]
-                   puts $f "If fso.FileExists(\"$esc_file\") Then fso.DeleteFile \"$esc_file\", True"
+                   set cmd_file [file nativename $file]
+                   puts $f "echo Target: $cmd_file >> \"$cleanup_log\""
+                   puts $f "if exist \"$cmd_file\" attrib -r \"$cmd_file\" >> \"$cleanup_log\" 2>&1"
+                   puts $f "for /l %%i in (1,1,300) do ("
+                   puts $f "  if exist \"$cmd_file\" echo Retry %%i: $cmd_file >> \"$cleanup_log\""
+                   puts $f "  if exist \"$cmd_file\" del /f /q \"$cmd_file\" >> \"$cleanup_log\" 2>&1"
+                   puts $f "  if exist \"$cmd_file\" ping 127.0.0.1 -n 2 > nul"
+                   puts $f ")"
+                   puts $f "if exist \"$cmd_file\" (echo FAILED: $cmd_file >> \"$cleanup_log\") else (echo DELETED_OR_NOT_EXIST: $cmd_file >> \"$cleanup_log\")"
                }
-               puts $f "fso.DeleteFile WScript.ScriptFullName"
+               puts $f "echo ==== NX cleanup end %date% %time% ==== >> \"$cleanup_log\""
+               puts $f "del /f /q \"%~f0\" > nul 2>&1"
                close $f
-               exec wscript.exe //nologo [file nativename $vbs_file] &
+
+               # Create the log before launching the background script. If this file exists but
+               # has no later "After delay" line, the issue is process launch rather than target selection.
+               catch {
+                   set log_chan [open $cleanup_log a]
+                   puts $log_chan "Scheduled cleanup script: $cleanup_cmd"
+                   foreach file $unique_files {
+                       puts $log_chan "Scheduled target: [file nativename $file]"
+                   }
+                   close $log_chan
+               }
+
+               # Start the cleanup script directly through cmd. Avoid PowerShell here because
+               # Start-Process errors can happen in the child process and are not visible to Tcl.
+               exec cmd.exe /c start "" /min cmd.exe /c "$cleanup_cmd" &
            } err] } {
-               # Fallback if VBScript creation fails
-               foreach file $unique_files {
-                   catch { exec cmd.exe /c "ping 127.0.0.1 -n 5 > nul & del /f /q \"$file\"" & }
+               # Do not delete immediately here: NX may not have read the .nc/.lpt preview yet.
+               # Keep the files and avoid writing to NX Information Window during cleanup failure.
+               catch {
+                   set fallback_log [file nativename [file join $temp_dir "nx_cleanup_latest.log"]]
+                   set log_chan [open $fallback_log a]
+                   puts $log_chan "NX cleanup setup failed; files kept for NX listing: $err"
+                   foreach file $unique_files {
+                       puts $log_chan "KEPT: [file nativename $file]"
+                   }
+                   close $log_chan
                }
            }
        } else {
            # Unix/Linux delayed deletion
-           set del_cmds [list]
+           set delete_cmd [list sh -c {delay=$1; shift; sleep "$delay"; for f do rm -f -- "$f"; done} sh $my_cleanup_delay_sec]
            foreach file $unique_files {
-               lappend del_cmds "rm -f \"$file\""
+               lappend delete_cmd $file
            }
-           set cmd_str [join $del_cmds " ; "]
-           catch { exec sh -c "sleep 4 ; $cmd_str" & }
+           catch { eval exec $delete_cmd & }
        }
    }
 }
