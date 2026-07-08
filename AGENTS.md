@@ -58,3 +58,12 @@
 - **使用自定义命令作为安全区**：所有的初始化逻辑（如 `PB_CMD_init_smart_grouping`）必须放置在自定义命令（如 `PB_CMD_kin_start_of_program`）中，因为 PB 绝对不会覆盖自定义命令的内容。
 - **UI 暴露原则 (User-Configurable Blocks)**：对于需要输出特定 NC 代码（如程序尾的 `M30`）的逻辑，优先创建独立的自定义命令（如 `PB_CMD_custom_program_footer`），并指导用户在 PB 界面中手动添加（例如添加到 Program End Sequence），而不是在底层强行 Hook `MOM_end_of_program`，以保持代码与 PB 界面的同步和可维护性。
 - **底层 Hook 的保留条件**：仅当逻辑极其复杂、位置极其敏感（如 `MOM_start_of_path` 的文件切换逻辑），暴露给 UI 容易导致用户配置失误引起崩溃时，才保留底层 Hook。且该 Hook 的注册入口必须位于安全的自定义命令中。
+
+## 5. 2026-07-08 排障经验硬规则
+
+- **不得破坏 `1111.tcl` 验证过的 NC 显示链路**：`my_original_ptp_chan` + `PB_CMD_before_output` + 原始临时汇总 NC 是 NX “列出输出”显示 NC 代码的关键路径。
+- **不要把 `.lpt` 当成信息窗口 NC 代码的主来源**：`.lpt` 是 listing/commentary 报告文件，不能替代主 `ptp_file_name` 输出流。
+- **不要为了未勾选“列出输出”时不生成临时汇总 NC 而禁用原始汇总 NC**：该文件是必要的临时预览文件，只能优化清理时机，不能禁止生成。
+- **排查 NC 显示问题必须先对照 `1111.tcl`**：确认没有 `PB_CMD_output_combined_nc_preview` 和“仅在勾选列出输出时才维护原始组合输出文件”的旧问题逻辑。
+- **清理优化只允许动清理时机、日志、隐藏启动方式**：不要改动 `MOM_open_output_file`、`MOM_output_literal`、`PB_CMD_before_output`、`my_original_ptp_chan` 等核心输出链路。
+- **Windows 后台清理避免直接 `cmd.exe /c start`**：优先使用 `wscript.exe //B //Nologo` + `WScript.Shell.Run ..., 0, False`，避免 cmd 窗口闪现。
