@@ -1125,6 +1125,11 @@ proc MOM_end_of_path { } {
   global mom_sys_add_cutting_time mom_sys_add_non_cutting_time
   global mom_cutting_time mom_machine_time
 
+   if { ![info exists mom_sys_add_cutting_time] || $mom_sys_add_cutting_time == "" } { set mom_sys_add_cutting_time 0.0 }
+   if { ![info exists mom_sys_add_non_cutting_time] || $mom_sys_add_non_cutting_time == "" } { set mom_sys_add_non_cutting_time 0.0 }
+   if { ![info exists mom_cutting_time] || $mom_cutting_time == "" } { set mom_cutting_time 0.0 }
+   if { ![info exists mom_machine_time] || $mom_machine_time == "" } { set mom_machine_time 0.0 }
+
   # Accumulated time should be in minutes.
    set mom_cutting_time [expr $mom_cutting_time + $mom_sys_add_cutting_time]
    set mom_machine_time [expr $mom_machine_time + $mom_sys_add_cutting_time + $mom_sys_add_non_cutting_time]
@@ -2707,7 +2712,7 @@ proc PB_CMD_init_smart_grouping { } {
 # 初始化智能分组系统的全局变量 and 拦截器
 # 应在 MOM_start_of_program 中调用
 #=============================================================
-    global my_out_dir my_group_level_map my_valid_files ptp_file_name
+    global my_out_dir my_group_level_map my_group_has_direct_ops my_group_route_prefix my_valid_files ptp_file_name
     global my_original_ptp_file_name mom_sys_list_output
 
     # 保存原始的 ptp_file_name，防止 NX 记住被我们修改过的路径
@@ -2743,6 +2748,10 @@ proc PB_CMD_init_smart_grouping { } {
 
     catch { unset my_group_level_map }
     array set my_group_level_map {}
+    catch { unset my_group_has_direct_ops }
+    array set my_group_has_direct_ops {}
+    catch { unset my_group_route_prefix }
+    array set my_group_route_prefix {}
     set my_valid_files [list]
 
     global my_has_groups my_header_written
@@ -2767,9 +2776,22 @@ proc PB_CMD_init_smart_grouping { } {
         set pname ""
         catch { set pname $mom_parent_group_name }
 
+        # NX 有时会把当前子组的 parent 漏报成 NC_PROGRAM，尤其是上层组仅作管理时。
+        # 只要当前组栈里还有上一层组，就优先按栈恢复真实父级，支持任意命名。
+        if { $gname != "" && [llength $my_group_stack] > 0 } {
+            set stack_parent [lindex $my_group_stack end]
+            if { $stack_parent != "" && $stack_parent != $gname } {
+                if { $pname == "" || $pname == "NC_PROGRAM" || $pname == "PROGRAM" || $pname == $gname } {
+                    set pname $stack_parent
+                }
+            }
+        }
+
+        # 不再按组名格式猜父级；形如 XMBL-BOT-05 的三级组也可能带“-数字”。
+        # 父级只来自 NX 原生变量或当前组栈，避免生成根目录下的错误文件夹。
+
         if { $gname != "" } {
             set my_group_level_map($gname) $pname
-
             # 检查父组是否在栈中，以处理平级组或根组切换
             if { $pname != "" && $pname != "NC_PROGRAM" && $pname != "PROGRAM" } {
                 set idx [lsearch -exact $my_group_stack $pname]
@@ -3823,7 +3845,7 @@ proc PB_CMD_smart_file_switch { } {
     global ptp_file_name mom_output_file_full_name
     global mom_parent_group_name mom_group_name
     global mom_output_file_basename
-    global my_group_level_map my_group_stack
+    global my_group_level_map my_group_stack my_group_has_direct_ops my_group_route_prefix my_max_manager_group_depth
     global my_is_merged_op
     global my_current_merged_group my_current_merged_tool my_skip_current_merged_group
     global my_has_groups
@@ -3837,6 +3859,7 @@ proc PB_CMD_smart_file_switch { } {
     set op_parent ""
     set op_grandparent ""
 
+    set stack_len 0
     if { [info exists my_group_stack] } {
         set stack_len [llength $my_group_stack]
         if { $stack_len > 0 } {
@@ -3868,19 +3891,57 @@ proc PB_CMD_smart_file_switch { } {
         }
     }
 
-    # 容错处理：如果直接选中某个组进行后处理，NX 可能会将 mom_parent_group_name 设置为与 mom_group_name 相同。
-    # 识别二级组的约定：组名末尾为“-”加数字
-    if { [regexp {^(.*)-[0-9]+$} $op_parent match prefix] } {
-        # 这是一个二级组
-        if { $op_grandparent == "" || $op_grandparent == $op_parent } {
-            # 如果直接选中二级组，推断其一级组（父组）为前缀
-            set op_grandparent $prefix
+    # 不再按组名格式猜层级。形如 XMBL-BOT-05 的三级组也会带“-数字”，
+    # 层级只来自当前组栈、mom_parent_group_name 和 my_group_level_map。
+    if { $op_grandparent == "" || $op_grandparent == $op_parent } {
+        set op_grandparent "NC_PROGRAM"
+    }
+
+    # 构建用于路由的安全组栈。若 NX 没触发组事件导致 my_group_stack 不存在，
+    # 则用 mom_group_name/mom_parent_group_name 和 my_group_level_map 向上补全祖先。
+    set route_stack [list]
+    if { [info exists my_group_stack] && [llength $my_group_stack] > 0 } {
+        set route_stack $my_group_stack
+    } elseif { $op_parent != "" && $op_parent != "NC_PROGRAM" && $op_parent != "PROGRAM" } {
+        set route_stack [list $op_parent]
+        set ancestor ""
+        if { $op_grandparent != "" && $op_grandparent != "NC_PROGRAM" && $op_grandparent != "PROGRAM" && $op_grandparent != $op_parent } {
+            set ancestor $op_grandparent
+        } elseif { [info exists my_group_level_map($op_parent)] } {
+            set ancestor $my_group_level_map($op_parent)
         }
-    } else {
-        # 不是二级组，那就是一级组（或根组）
-        if { $op_grandparent == "" || $op_grandparent == $op_parent } {
-            set op_grandparent "NC_PROGRAM"
+        set ancestor_guard 0
+        while { $ancestor != "" && $ancestor != "NC_PROGRAM" && $ancestor != "PROGRAM" && $ancestor_guard < 10 } {
+            if { [lsearch -exact $route_stack $ancestor] >= 0 } { break }
+            set route_stack [linsert $route_stack 0 $ancestor]
+            incr ancestor_guard
+            if { [info exists my_group_level_map($ancestor)] } {
+                set ancestor $my_group_level_map($ancestor)
+            } else {
+                set ancestor ""
+            }
         }
+    }
+    # 如果当前子组事件只给了“二级/三级”局部栈，尝试用之前已输出过的
+    # 组目录前缀补回更外层管理路径，例如 XMZL-BOT -> 淬火前/XMZL-BOT。
+    if { [llength $route_stack] > 0 } {
+        set first_route_group [lindex $route_stack 0]
+        if { [info exists my_group_route_prefix($first_route_group)] } {
+            set remembered_prefix $my_group_route_prefix($first_route_group)
+            set rebuilt_route_stack [list]
+            foreach prefix_group $remembered_prefix {
+                lappend rebuilt_route_stack $prefix_group
+            }
+            foreach suffix_group [lrange $route_stack 1 end] {
+                lappend rebuilt_route_stack $suffix_group
+            }
+            set route_stack $rebuilt_route_stack
+        }
+    }
+    set stack_len [llength $route_stack]
+
+    if { ![info exists my_group_has_direct_ops] } {
+        array set my_group_has_direct_ops {}
     }
 
     # 3. 核心逻辑：基于 NX 原生的父组属性判断绝对层级
@@ -3893,22 +3954,59 @@ proc PB_CMD_smart_file_switch { } {
         set safe_tool_name [string map [list " " "_" "/" "_" "\\" "_" "*" "_" ":" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"] $mom_tool_name]
     }
 
+    # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为“管理组”。
+    if { $op_parent != "" && $op_parent != "NC_PROGRAM" && $op_parent != "PROGRAM" } {
+        set my_group_has_direct_ops($op_parent) 1
+        if { [llength $route_stack] > 0 } {
+            set my_group_route_prefix($op_parent) $route_stack
+        }
+    }
+
+    # 有限剥离管理组：最多向下跳过 3 层没有直接工序的管理组，不无限递归。
+    # 剥离后的第 1 层按原“一级组”处理；第 2 层按原“二级组合并 NC”处理。
+    set effective_base 0
+    set max_manager_depth 3
+    if { [info exists my_max_manager_group_depth] && $my_max_manager_group_depth != "" } {
+        catch { scan $my_max_manager_group_depth "%d" max_manager_depth }
+        if { $max_manager_depth < 0 } { set max_manager_depth 0 }
+    }
+    while { $effective_base < $stack_len - 1 && $effective_base < $max_manager_depth } {
+        set candidate_group [lindex $route_stack $effective_base]
+        if { [info exists my_group_has_direct_ops($candidate_group)] } {
+            break
+        }
+        incr effective_base
+    }
+
+    set effective_depth [expr {$stack_len - $effective_base}]
+
     if { $op_parent == "" || $op_parent == "NC_PROGRAM" || $op_parent == "PROGRAM" } {
         # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为工序名
         set parent_dir ""
         set file_target "${mom_operation_name}_${safe_tool_name}"
-    } else {
-        if { $op_grandparent == "" || $op_grandparent == "NC_PROGRAM" || $op_grandparent == "PROGRAM" } {
-            # Level 1: op_parent 是一级目录 (例如 TOP) -> 文件夹为 TOP，文件名为工序名
-            set parent_dir $op_parent
-            set file_target "${mom_operation_name}_${safe_tool_name}"
-        } else {
-            # Level 2 (或更深): op_parent 是二级目录，op_grandparent 是一级目录
-            # -> 文件夹为一级目录 (op_grandparent)，文件名为二级目录名 (op_parent)，单一 NC 文件
-            set parent_dir $op_grandparent
-            set file_target "${op_parent}"
-            set my_is_merged_op 1
+    } elseif { $effective_depth <= 1 } {
+        # 有效 Level 1: 当前有效组内直接工序 -> 管理组路径/有效组/工序.nc
+        set parent_dir ""
+        foreach path_group [lrange $route_stack 0 end] {
+            if { $parent_dir == "" } {
+                set parent_dir $path_group
+            } else {
+                set parent_dir [file join $parent_dir $path_group]
+            }
         }
+        set file_target "${mom_operation_name}_${safe_tool_name}"
+    } else {
+        # 有效 Level 2+: 当前有效组的子组 -> 管理组路径/有效组/子组_刀具.nc，合并子组内工序
+        set parent_dir ""
+        foreach path_group [lrange $route_stack 0 $effective_base] {
+            if { $parent_dir == "" } {
+                set parent_dir $path_group
+            } else {
+                set parent_dir [file join $parent_dir $path_group]
+            }
+        }
+        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]_${safe_tool_name}"
+        set my_is_merged_op 1
     }
 
 # ==========================================================
@@ -3971,8 +4069,13 @@ proc PB_CMD_smart_file_switch { } {
     if { $parent_dir == "" } {
         set target_folder_path $my_out_dir
     } else {
-        set folder_name [string map [list "<" "_" ">" "_" ":" "_" "\"" "_" "/" "_" "\\" "_" "|" "_" "?" "_" "*" "_"] $parent_dir]
-        set target_folder_path [file nativename [file join $my_out_dir $folder_name]]
+        # parent_dir 可能是“一级/二级”的嵌套路径。逐段清洗，保留目录层级。
+        set target_folder_path $my_out_dir
+        foreach folder_part [split [string map [list "\\" "/"] $parent_dir] "/"] {
+            if { $folder_part == "" } { continue }
+            set folder_name [string map [list "<" "_" ">" "_" ":" "_" "\"" "_" "/" "_" "\\" "_" "|" "_" "?" "_" "*" "_"] $folder_part]
+            set target_folder_path [file nativename [file join $target_folder_path $folder_name]]
+        }
         # 确保目录存在
         if { ![file exists $target_folder_path] } {
             catch { file mkdir $target_folder_path }
