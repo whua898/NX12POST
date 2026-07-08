@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff63488e-8771-46fa-932e-7f837e023fd9" name="更改" comment="wh" />
+    <list default="true" id="ff63488e-8771-46fa-932e-7f837e023fd9" name="更改" comment="wh">
+      <change beforePath="$PROJECT_DIR$/wv.def" beforeDir="false" afterPath="$PROJECT_DIR$/wv.def" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wv.pui" beforeDir="false" afterPath="$PROJECT_DIR$/wv.pui" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/wv.tcl" beforeDir="false" afterPath="$PROJECT_DIR$/wv.tcl" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -65,7 +69,7 @@
       <workItem from="1783405746332" duration="1117000" />
       <workItem from="1783407333481" duration="199000" />
       <workItem from="1783407544086" duration="3092000" />
-      <workItem from="1783411200750" duration="51277000" />
+      <workItem from="1783411200750" duration="51786000" />
     </task>
     <task id="LOCAL-00001" summary="wh">
       <option name="closed" value="true" />

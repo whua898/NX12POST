@@ -4,7 +4,7 @@
 #
 #    This is a 3-Axis Milling Machine.
 #
-#  Created by GZJ @ Thursday, May 30 2024, 10:39:46 +0800
+#  Created by wh898 @ Wednesday, July 08 2026, 19:59:04 +0800
 #  with Post Builder version 12.0.2.
 #
 ########################################################################
@@ -131,22 +131,6 @@ proc PB_CMD___log_revisions { } {
 
      set mom_sys_control_out                       "("
      set mom_sys_control_in                        ")"
-
-
-    # Retain UDE handlers of ugpost_base
-     foreach ude_handler { MOM_insert \
-                           MOM_operator_message \
-                           MOM_opskip_off \
-                           MOM_opskip_on \
-                           MOM_pprint \
-                           MOM_text \
-                         } \
-     {
-        if { [llength [info commands $ude_handler]] &&\
-            ![llength [info commands ugpost_${ude_handler}]] } {
-           rename $ude_handler ugpost_${ude_handler}
-        }
-     }
 
 
      set mom_sys_post_initialized 1
@@ -601,16 +585,11 @@ proc MOM_machine_mode { } {
   global pb_start_of_program_flag
   global mom_operation_name mom_sys_change_mach_operation_name
 
-   if { [info exists mom_operation_name] } {
-      set mom_sys_change_mach_operation_name $mom_operation_name
-   }
+   set mom_sys_change_mach_operation_name $mom_operation_name
 
-   if { [info exists pb_start_of_program_flag] && $pb_start_of_program_flag == 0 } {
-      if { [catch {PB_start_of_program} res] } {
-         catch {unset pb_start_of_program_flag}
-      } else {
-         set pb_start_of_program_flag 1
-      }
+   if { $pb_start_of_program_flag == 0 } {
+      PB_start_of_program
+      set pb_start_of_program_flag 1
    }
 
   # Reload post for simple mill-turn
@@ -898,15 +877,6 @@ proc MOM_circular_move { } {
 
 
 #=============================================================
-proc MOM_clamp { } {
-#=============================================================
-   global mom_clamp_axis
-   global mom_clamp_status
-   global mom_clamp_text
-}
-
-
-#=============================================================
 proc MOM_coolant_off { } {
 #=============================================================
    COOLANT_SET
@@ -917,6 +887,15 @@ proc MOM_coolant_off { } {
 proc MOM_coolant_on { } {
 #=============================================================
    COOLANT_SET
+}
+
+
+#=============================================================
+proc MOM_cutcom_off { } {
+#=============================================================
+   CUTCOM_SET
+
+   MOM_do_template cutcom_off
 }
 
 
@@ -939,15 +918,6 @@ proc MOM_cutcom_on { } {
          unset mom_cutcom_adjust_register
       }
    }
-}
-
-
-#=============================================================
-proc MOM_cutcom_off { } {
-#=============================================================
-   CUTCOM_SET
-
-   MOM_do_template cutcom_off
 }
 
 
@@ -1181,27 +1151,6 @@ proc MOM_gohome_move { } {
 
 
 #=============================================================
-proc MOM_head { } {
-#=============================================================
-   global mom_head_name
-}
-
-
-#=============================================================
-proc MOM_Head { } {
-#=============================================================
-   MOM_head
-}
-
-
-#=============================================================
-proc MOM_HEAD { } {
-#=============================================================
-   MOM_head
-}
-
-
-#=============================================================
 proc MOM_initial_move { } {
 #=============================================================
   global mom_feed_rate mom_feed_rate_per_rev mom_motion_type
@@ -1221,21 +1170,6 @@ proc MOM_initial_move { } {
    if { [CMD_EXIST CONFIG_TURBO_OUTPUT] } {
       CONFIG_TURBO_OUTPUT
    }
-}
-
-
-#=============================================================
-proc MOM_insert { } {
-#=============================================================
-   global mom_Instruction
-   PB_CMD_MOM_insert
-}
-
-
-#=============================================================
-proc MOM_instance_operation_handler { } {
-#=============================================================
-   global mom_handle_instanced_operations
 }
 
 
@@ -1289,68 +1223,9 @@ proc MOM_load_tool { } {
 
 
 #=============================================================
-proc MOM_lock_axis { } {
-#=============================================================
-   global mom_lock_axis
-   global mom_lock_axis_plane
-   global mom_lock_axis_value
-}
-
-
-#=============================================================
-proc MOM_operator_message { } {
-#=============================================================
-   global mom_operator_message
-   PB_CMD_MOM_operator_message
-}
-
-
-#=============================================================
-proc MOM_opskip_off { } {
-#=============================================================
-   global mom_opskip_text
-   PB_CMD_MOM_opskip_off
-}
-
-
-#=============================================================
-proc MOM_opskip_on { } {
-#=============================================================
-   global mom_opskip_text
-   PB_CMD_MOM_opskip_on
-}
-
-
-#=============================================================
 proc MOM_opstop { } {
 #=============================================================
    MOM_do_template opstop
-}
-
-
-#=============================================================
-proc MOM_origin { } {
-#=============================================================
-   global mom_X
-   global mom_Y
-   global mom_Z
-   global mom_origin_text
-}
-
-
-#=============================================================
-proc MOM_power { } {
-#=============================================================
-   global mom_power_value
-   global mom_power_text
-}
-
-
-#=============================================================
-proc MOM_pprint { } {
-#=============================================================
-   global mom_pprint
-   PB_CMD_MOM_pprint
 }
 
 
@@ -1502,42 +1377,9 @@ proc MOM_rapid_move { } {
 
 
 #=============================================================
-proc MOM_rotate { } {
-#=============================================================
-   global mom_rotate_axis_type
-   global mom_rotation_mode
-   global mom_rotation_direction
-   global mom_rotation_angle
-   global mom_rotation_reference_mode
-   global mom_rotation_text
-}
-
-
-#=============================================================
-proc MOM_select_head { } {
-#=============================================================
-   global mom_head_type
-   global mom_head_text
-}
-
-
-#=============================================================
 proc MOM_sequence_number { } {
 #=============================================================
-   global mom_sequence_mode
-   global mom_sequence_number
-   global mom_sequence_increment
-   global mom_sequence_frequency
-   global mom_sequence_text
    SEQNO_SET
-}
-
-
-#=============================================================
-proc MOM_set_axis { } {
-#=============================================================
-   global mom_axis_position
-   global mom_axis_position_value
 }
 
 
@@ -1549,9 +1391,9 @@ proc MOM_set_modes { } {
 
 
 #=============================================================
-proc MOM_set_polar { } {
+proc MOM_spindle_off { } {
 #=============================================================
-   global mom_coordinate_output_mode
+   MOM_do_template spindle_off
 }
 
 
@@ -1562,13 +1404,6 @@ proc MOM_spindle_rpm { } {
 
    MOM_force Once S M_spindle
    MOM_do_template spindle_rpm
-}
-
-
-#=============================================================
-proc MOM_spindle_off { } {
-#=============================================================
-   MOM_do_template spindle_off
 }
 
 
@@ -1634,14 +1469,6 @@ proc MOM_tap_move { } {
 
 
 #=============================================================
-proc MOM_text { } {
-#=============================================================
-   global mom_user_defined_text
-   PB_CMD_MOM_text
-}
-
-
-#=============================================================
 proc MOM_tool_change { } {
 #=============================================================
    global mom_tool_change_type mom_manual_tool_change
@@ -1690,35 +1517,6 @@ proc MOM_tool_preselect { } {
    }
 
    MOM_do_template tool_preselect
-}
-
-
-#=============================================================
-proc MOM_workpiece_load { } {
-#=============================================================
-   global mom_spindle_number
-}
-
-
-#=============================================================
-proc MOM_workpiece_takeover { } {
-#=============================================================
-   global mom_spindle_2_position
-   global mom_takeover_csys
-}
-
-
-#=============================================================
-proc MOM_workpiece_unload { } {
-#=============================================================
-   global mom_spindle_number
-}
-
-
-#=============================================================
-proc MOM_zero { } {
-#=============================================================
-   global mom_work_coordinate_number
 }
 
 
@@ -4198,10 +3996,23 @@ return
 }
 
 
+if [info exists mom_sys_start_of_program_flag] {
+   if [llength [info commands PB_CMD_kin_start_of_program] ] {
+      PB_CMD_kin_start_of_program
+   }
+} else {
+   set mom_sys_head_change_init_program 1
+   set mom_sys_start_of_program_flag 1
+}
+
+
 set cam_post_user_tcl "wv_user.tcl"
 
+
+
+
 #***************************
-# Source in wv user's tcl file.
+# Source in user's tcl file.
 #***************************
 set cam_post_dir [MOM_ask_env_var UGII_CAM_POST_DIR]
 set ugii_version [string trimleft [MOM_ask_env_var UGII_VERSION] v]
@@ -4209,10 +4020,13 @@ set ugii_version [string trimleft [MOM_ask_env_var UGII_VERSION] v]
 if { [catch {
    if { $ugii_version >= 5 } {
       if { [file exists "[file dirname [info script]]/$cam_post_user_tcl"] } {
+        # From directory relative to that of current post
          source "[file dirname [info script]]/$cam_post_user_tcl"
       } elseif { [file exists "${cam_post_dir}$cam_post_user_tcl"] } {
+        # From directory relative to UGII_CAM_POST_DIR
          source "${cam_post_dir}$cam_post_user_tcl"
       } elseif { [file exists "$cam_post_user_tcl"] } {
+        # From the specified directory
          source "$cam_post_user_tcl"
       } else {
          MOM_output_to_listing_device "User's Tcl: $cam_post_user_tcl not found!"
@@ -4227,16 +4041,6 @@ if { [catch {
 } err] } {
    MOM_output_to_listing_device "User's Tcl: An error occured while sourcing $cam_post_user_tcl!\n$err"
    MOM_abort "User's Tcl: An error occured while sourcing $cam_post_user_tcl!\n$err"
-}
-
-
-if [info exists mom_sys_start_of_program_flag] {
-   if [llength [info commands PB_CMD_kin_start_of_program] ] {
-      PB_CMD_kin_start_of_program
-   }
-} else {
-   set mom_sys_head_change_init_program 1
-   set mom_sys_start_of_program_flag 1
 }
 
 

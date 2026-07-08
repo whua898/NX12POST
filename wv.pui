@@ -8,7 +8,7 @@
 #  <WARNING> The contents of this file should not be modified!               #
 #                                                                            #
 ##############################################################################
-#  Created by GZJ @ Thursday, May 30 2024, 10:39:47 +0800
+#  Created by wh898 @ Wednesday, July 08 2026, 19:59:04 +0800
 #  with Post Builder version 12.0.2.
 #============================================================================#
 
@@ -35,6 +35,7 @@ Saved with NX/Post Builder Version 8.5.1.0 on 2013Äê11ÔÂ11ÈÕÐÇÆÚһ 09:
 Saved with NX/Post Builder Version 8.5.1.0 on 2013Äê11ÔÂ11ÈÕÐÇÆÚһ 11:13:20 中国标准时间 by Administrator.
 Saved with NX/后处理构造器 版本 10.0.0.0 on 2019-07-22 15:13:07 中国标准时间 by Administrator.
 Created wv with NX/后处理构造器 版本 12.0.2.1 on Thursday, May 30 2024, 10:39:46 +0800 by GZJ.
+Saved wv with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026, 19:59:04 +0800 by wh898.
 #  HISTORY END
 ## POST INFORMATION END
 
@@ -307,12 +308,6 @@ Text              ""  0  "Text String"  0
 {Load Tool}                {}  {$gPB(event,loadtool,name)} {mill_tool_change}
 {Stop}                     {stop}  {$gPB(event,stop,name)} {stop}
 {Tool Preselect}           {tool_preselect}  {$gPB(event,toolpreselect,name)} {tool_preselect}
-{insert}                   {PB_CMD_MOM_insert}  {Insert} {UDE}
-{operator_message}         {PB_CMD_MOM_operator_message}  {Operator Message} {UDE}
-{opskip_off}               {PB_CMD_MOM_opskip_off}  {Optional Skip Off} {UDE}
-{opskip_on}                {PB_CMD_MOM_opskip_on}  {Optional Skip On} {UDE}
-{pprint}                   {PB_CMD_MOM_pprint}  {Pprint} {UDE}
-{text}                     {PB_CMD_MOM_text}  {User Defined} {UDE}
 #Control Functions End
 
 #Motions Start
@@ -325,22 +320,22 @@ Text              ""  0  "Text String"  0
 {Cycle Parameters}         {post_cycle_set}  {$gPB(event,cycle,com_param,name)}
 {Cycle Off}                {cycle_off}  {$gPB(event,cycle,cycle_off,name)}
 {Cycle Plane Change}       {}  {$gPB(event,cycle,plane_chng,name)}
-{Drill}                    {cycle_drill}  {$gPB(event,cycle,drill,name)} {CYCLE_EVENT}
+{Drill}                    {cycle_drill}  {$gPB(event,cycle,drill,name)}
 {Drill Dwell}              {cycle_drill_dwell}  {$gPB(event,cycle,drill_dwell,name)}
-{Drill Text}               {}  {$gPB(event,cycle,drill_text,name)} {CYCLE_EVENT}
-{Drill Csink}              {}  {$gPB(event,cycle,drill_csink,name)} {CYCLE_EVENT}
-{Drill Deep}               {cycle_drill_deep}  {$gPB(event,cycle,drill_deep,name)} {CYCLE_EVENT}
-{Drill Break Chip}         {cycle_drill_break_chip}  {$gPB(event,cycle,drill_brk_chip,name)} {CYCLE_EVENT}
-{Tap}                      {cycle_tap}  {$gPB(event,cycle,tap,name)} {CYCLE_EVENT}
-{Bore}                     {cycle_bore}  {$gPB(event,cycle,bore,name)} {CYCLE_EVENT}
+{Drill Text}               {}  {$gPB(event,cycle,drill_text,name)}
+{Drill Csink}              {}  {$gPB(event,cycle,drill_csink,name)}
+{Drill Deep}               {cycle_drill_deep}  {$gPB(event,cycle,drill_deep,name)}
+{Drill Break Chip}         {cycle_drill_break_chip}  {$gPB(event,cycle,drill_brk_chip,name)}
+{Tap}                      {cycle_tap}  {$gPB(event,cycle,tap,name)}
+{Bore}                     {cycle_bore}  {$gPB(event,cycle,bore,name)}
 {Bore Dwell}               {cycle_bore_dwell}  {$gPB(event,cycle,bore_dwell,name)}
-{Bore Drag}                {cycle_bore_drag}  {$gPB(event,cycle,bore_drag,name)} {CYCLE_EVENT}
-{Bore No Drag}             {cycle_bore_no_drag}  {$gPB(event,cycle,bore_no_drag,name)} {CYCLE_EVENT}
-{Bore Back}                {cycle_bore_back}  {$gPB(event,cycle,bore_back,name)} {CYCLE_EVENT}
-{Bore Manual}              {cycle_bore_manual}  {$gPB(event,cycle,bore_manual,name)} {CYCLE_EVENT}
+{Bore Drag}                {cycle_bore_drag}  {$gPB(event,cycle,bore_drag,name)}
+{Bore No Drag}             {cycle_bore_no_drag}  {$gPB(event,cycle,bore_no_drag,name)}
+{Bore Back}                {cycle_bore_back}  {$gPB(event,cycle,bore_back,name)}
+{Bore Manual}              {cycle_bore_manual}  {$gPB(event,cycle,bore_manual,name)}
 {Bore Manual Dwell}        {cycle_bore_manual_dwell}  {$gPB(event,cycle,bore_manual_dwell,name)}
-{Peck Drill}               {}  {$gPB(event,cycle,peck_drill,name)} {CYCLE_EVENT}
-{Break Chip}               {}  {$gPB(event,cycle,break_chip,name)} {CYCLE_EVENT}
+{Peck Drill}               {}  {$gPB(event,cycle,peck_drill,name)}
+{Break Chip}               {}  {$gPB(event,cycle,break_chip,name)}
 #Cycles End
 
 #Misc Start
@@ -688,11 +683,11 @@ Text              ""  0  "Text String"  0
       {"$mom_out_angle_pos(0)" "" "4th Axis Angle"} \
       {"$mom_out_angle_pos(1)" "" "5th Axis Angle"}
 {I} \
-      {"$mom_pos_arc_center(0) - $mom_prev_pos(0)" "" "圆弧起点到中心 X-Axis"}
+      {"$mom_pos_arc_center(0) - $mom_prev_pos(0)" "" "Arc Start To Center X-Axis"}
 {J} \
-      {"$mom_pos_arc_center(1) - $mom_prev_pos(1)" "" "圆弧起点到中心 Y-Axis"}
+      {"$mom_pos_arc_center(1) - $mom_prev_pos(1)" "" "Arc Start To Center Y-Axis"}
 {K} \
-      {"$mom_pos_arc_center(2) - $mom_prev_pos(2)" "" "圆弧起点到中心 Z-Axis"}
+      {"$mom_pos_arc_center(2) - $mom_prev_pos(2)" "" "Arc Start To Center Z-Axis"}
 {R} \
       {"$mom_arc_radius" "" "Arc Radius"} \
       {"$mom_cycle_rapid_to_pos($mom_cycle_spindle_axis)" "" "Rapid Position in Cycle"} \
