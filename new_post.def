@@ -469,20 +469,20 @@ FORMATTING
        M[$mom_auxfun]
   }
 
-   BLOCK_TEMPLATE circular_move
-   {
-        G_plane[$mom_sys_cutcom_plane_code($mom_pos_arc_plane)]\opt
-        G_motion[$mom_sys_circle_code($mom_arc_direction)]\opt
-        G_mode[$mom_sys_output_code($mom_output_mode)]
-        X[$mom_pos(0)]
-        Y[$mom_pos(1)]
-        Z[$mom_pos(2)]
-        I[$mom_pos_arc_center(0) - $mom_prev_pos(0)]
-        J[$mom_pos_arc_center(1) - $mom_prev_pos(1)]
-        K[$mom_pos_arc_center(2) - $mom_prev_pos(2)]
-        F[$feed]
-        S[$mom_spindle_speed]
-   }
+  BLOCK_TEMPLATE circular_move
+  {
+       G_plane[$mom_sys_cutcom_plane_code($mom_pos_arc_plane)]\opt
+       G_motion[$mom_sys_circle_code($mom_arc_direction)]\opt
+       G_mode[$mom_sys_output_code($mom_output_mode)]
+       X[$mom_pos(0)]
+       Y[$mom_pos(1)]
+       Z[$mom_pos(2)]
+       I[$mom_pos_arc_center(0) - $mom_prev_pos(0)]
+       J[$mom_pos_arc_center(1) - $mom_prev_pos(1)]
+       K[$mom_pos_arc_center(2) - $mom_prev_pos(2)]
+       F[$feed]
+       S[$mom_spindle_speed]
+  }
 
   BLOCK_TEMPLATE circular_move_turbo
   {

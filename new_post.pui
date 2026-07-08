@@ -8,7 +8,7 @@
 #  <WARNING> The contents of this file should not be modified!               #
 #                                                                            #
 ##############################################################################
-#  Created by wh898 @ Saturday, April 11 2026, 18:11:01 +0800
+#  Created by wh898 @ Wednesday, July 08 2026, 13:00:03 +0800
 #  with Post Builder version 12.0.2.
 #============================================================================#
 
@@ -109,6 +109,11 @@ Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026,
 Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 17:34:55 +0800 by wh898.
 Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 17:43:09 +0800 by wh898.
 Saved new_post with NX/Post Builder Version 12.0.2.1 on Saturday, April 11 2026, 18:11:01 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026, 12:27:36 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026, 12:44:00 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026, 12:46:33 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026, 12:54:44 +0800 by wh898.
+Saved new_post with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026, 13:00:03 +0800 by wh898.
 #  HISTORY END
 ## POST INFORMATION END
 
@@ -961,6 +966,7 @@ Text              ""  0  "Text String"  0
       {"PB_CMD_abort_event" "" "Custom Command"} \
       {"PB_CMD_ask_machine_type" "" "Custom Command"} \
       {"PB_CMD_before_motion" "" "Custom Command"} \
+      {"PB_CMD_before_output" "" "Custom Command"} \
       {"PB_CMD_build_output_path" "" "Custom Command"} \
       {"PB_CMD_cancel_suppress_force_once_per_event" "" "Custom Command"} \
       {"PB_CMD_check_zero_tool" "" "Custom Command"} \
@@ -993,6 +999,7 @@ Text              ""  0  "Text String"  0
       {"PB_CMD_program_header" "" "Custom Command"} \
       {"PB_CMD_record_parent_group" "" "Custom Command"} \
       {"PB_CMD_reload_iks_parameters" "" "Custom Command"} \
+      {"PB_CMD_remember_cleanup_file" "" "Custom Command"} \
       {"PB_CMD_restore_work_plane_change" "" "Custom Command"} \
       {"PB_CMD_revise_new_iks" "" "Custom Command"} \
       {"PB_CMD_run_postprocess" "" "Custom Command"} \

@@ -5335,13 +5335,16 @@ proc CLOSE_files { } {
            lappend files_to_delete $cleanup_file
        }
    }
-   if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" && [info exists ptp_file_name] } {
-       set orig_ptp [file normalize $my_original_ptp_file_name]
-       set curr_ptp [file normalize $ptp_file_name]
-       if { $orig_ptp != $curr_ptp } {
+   if { [info exists my_original_ptp_file_name] && $my_original_ptp_file_name != "" } {
+       set orig_ptp ""
+       catch { set orig_ptp [file normalize $my_original_ptp_file_name] }
+       if { $orig_ptp != "" } {
+           # The original selected NX output is always a temporary combined preview file.
+           # PB_CMD_cleanup_smart_grouping restores ptp_file_name to this value before CLOSE_files,
+           # so comparing orig_ptp with ptp_file_name here can incorrectly skip the .nc cleanup target.
            lappend files_to_delete [file nativename $orig_ptp]
 
-           # Also clean up the other potential extension (.ptp or .nc)
+           # Also clean up the sibling preview extension (.ptp or .nc).
            if { [string match -nocase "*.nc" $orig_ptp] } {
                lappend files_to_delete [file nativename "[file rootname $orig_ptp].ptp"]
            } elseif { [string match -nocase "*.ptp" $orig_ptp] } {
@@ -5421,16 +5424,21 @@ proc CLOSE_files { } {
                puts $f "echo Delay seconds: $my_cleanup_delay_sec >> \"$cleanup_log\""
                puts $f "ping 127.0.0.1 -n [expr {$my_cleanup_delay_sec + 1}] > nul"
                puts $f "echo After delay %date% %time% >> \"$cleanup_log\""
+               set cleanup_target_index 0
                foreach file $unique_files {
+                   incr cleanup_target_index
                    set cmd_file [file nativename $file]
                    puts $f "echo Target: $cmd_file >> \"$cleanup_log\""
-                   puts $f "if exist \"$cmd_file\" attrib -r \"$cmd_file\" >> \"$cleanup_log\" 2>&1"
-                   puts $f "for /l %%i in (1,1,300) do ("
-                   puts $f "  if exist \"$cmd_file\" echo Retry %%i: $cmd_file >> \"$cleanup_log\""
-                   puts $f "  if exist \"$cmd_file\" del /f /q \"$cmd_file\" >> \"$cleanup_log\" 2>&1"
-                   puts $f "  if exist \"$cmd_file\" ping 127.0.0.1 -n 2 > nul"
+                   puts $f "if exist \"$cmd_file\" attrib -r \"$cmd_file\" > nul 2>&1"
+                   puts $f "set NX_CLEANUP_RETRY=60"
+                   puts $f "echo $cmd_file | findstr /i /e \".lpt\" > nul && set NX_CLEANUP_RETRY=20"
+                   puts $f "for /l %%i in (1,1,%NX_CLEANUP_RETRY%) do ("
+                   puts $f "  if exist \"$cmd_file\" del /f /q \"$cmd_file\" > nul 2>&1"
+                   puts $f "  if not exist \"$cmd_file\" goto nx_cleanup_done_$cleanup_target_index"
+                   puts $f "  ping 127.0.0.1 -n 2 > nul"
                    puts $f ")"
-                   puts $f "if exist \"$cmd_file\" (echo FAILED: $cmd_file >> \"$cleanup_log\") else (echo DELETED_OR_NOT_EXIST: $cmd_file >> \"$cleanup_log\")"
+                   puts $f ":nx_cleanup_done_$cleanup_target_index"
+                   puts $f "if exist \"$cmd_file\" (echo FAILED_LOCKED_OR_IN_USE: $cmd_file >> \"$cleanup_log\") else (echo DELETED_OR_NOT_EXIST: $cmd_file >> \"$cleanup_log\")"
                }
                puts $f "echo ==== NX cleanup end %date% %time% ==== >> \"$cleanup_log\""
                puts $f "del /f /q \"%~f0\" > nul 2>&1"
