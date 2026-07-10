@@ -14,8 +14,8 @@
 
 
 ## POST EVENT HANDLER START
-def_file  new_post.def
-tcl_file  new_post.tcl
+def_file  smart_post.def
+tcl_file  smart_post.tcl
 ## POST EVENT HANDLER END
 
 
@@ -121,14 +121,14 @@ Saved new_post with NX/Post Builder Version 12.0.2.1 on Wednesday, July 08 2026,
 ## LISTING FILE START
 Listfileflag_warn              OFF
 Listfileflag                   OFF
-Listfileflag_alt_unit_post_name new_post__IN.pui
+Listfileflag_alt_unit_post_name smart_post__IN.pui
 Listfileflag_group             OFF
 Listfileflag_verbose           OFF
 Listfileflag_tool              0
 Listfileflag_oper              0
 Listfileflag_lpt_ext           lpt
 Listfileflag_ncfile_ext        nc
-Listfileflag_usertcl_name      new_post_user.tcl
+Listfileflag_usertcl_name      smart_post_user.tcl
 Listfileflag_review            OFF
 Listfileflag_start_path        0
 Listfileflag_warn_opt          FILE

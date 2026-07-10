@@ -1,0 +1,21 @@
+! ==============================================================================
+! NX CAM Smart Post Custom Ribbon Tab (smart_post.rtb)
+! ==============================================================================
+! 这是一个标准的 NX Ribbon 自定义文件。
+! 当进入加工 (CAM/Manufacturing) 环境时，NX 会自动在最上方生成一个名为 "Smart Post" 的标签页。
+! ==============================================================================
+
+TITLE Smart Post 一键后处理
+VERSION 120
+
+! 仅在加工 (Manufacturing) 应用环境下显示此功能区
+APPLICATION UG_APP_MANUFACTURING
+
+GROUP SMART_POST_GRP
+    LABEL 智能一键后处理
+    BITMAP post_processor
+
+    ! 引用 smart_post.men 中定义的按钮
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+    SIZE LARGE
+END_GROUP

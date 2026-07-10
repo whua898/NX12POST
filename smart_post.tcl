@@ -1,6 +1,6 @@
 ########################## TCL Event Handlers ##########################
 #
-#  new_post.tcl - 3_axis_mill
+#  smart_post.tcl - 3_axis_mill
 #
 #    This is a 3-Axis Milling Machine.
 #
@@ -27,6 +27,33 @@ proc output_literal_gbk { str } {
 # 直接交给 NX 输出引擎处理编码，避免手动 convertto 造成二次转码乱码。
 #=============================================================
     MOM_output_literal $str
+}
+
+
+
+proc PB_CMD_smart_program_number { program_name } {
+    set clean_name [string toupper [string trim $program_name]]
+    set prefix_map(TOP) 1
+    set prefix_map(LEF) 2
+    set prefix_map(RIG) 3
+    set prefix_map(FRO) 4
+    set prefix_map(BLA) 5
+    set prefix_map(BOT) 6
+
+    if { [regexp {^([A-Z]+)-?([0-9]+)} $clean_name -> prefix op_num] } {
+        if { [info exists prefix_map($prefix)] } {
+            if { ![scan $op_num "%d" op_dec] } { set op_dec 1 }
+            set program_dec [expr {$prefix_map($prefix) * 1000 + ($op_dec % 1000)}]
+            return [format "%04d" $program_dec]
+        }
+    }
+
+    if { [regexp {([0-9]+)} $clean_name -> raw_num] } {
+        if { ![scan $raw_num "%d" num_dec] } { set num_dec 1 }
+        return [format "%04d" [expr {$num_dec % 10000}]]
+    }
+
+    return "0001"
 }
 
 
@@ -162,7 +189,7 @@ proc output_literal_gbk { str } {
 
 
   set mom_sys_use_default_unit_fragment         "ON"
-  set mom_sys_alt_unit_post_name                "new_post__IN.pui"
+  set mom_sys_alt_unit_post_name                "smart_post__IN.pui"
 
 
 ########## SYSTEM VARIABLE DECLARATIONS ##############
@@ -466,6 +493,7 @@ proc MOM_end_of_program { } {
 
   # Close warning and listing files
    CLOSE_files
+   PB_CMD_open_smart_nc_output_dir
 
    if [CMD_EXIST PB_CMD_kin_end_of_program] {
       PB_CMD_kin_end_of_program
@@ -558,11 +586,75 @@ proc MOM_before_motion { } {
 
 
 #=============================================================
+proc PB_CMD_record_smart_group_start { } {
+#=============================================================
+  global mom_group_name mom_parent_group_name my_group_level_map my_group_stack my_has_groups
+
+   set my_has_groups 1
+   if { ![info exists my_group_stack] } { set my_group_stack [list] }
+   if { ![array exists my_group_level_map] } { array set my_group_level_map {} }
+
+   set gname ""
+   catch { set gname $mom_group_name }
+   if { $gname == "" } { catch { set gname [MOM_ask_group_name] } }
+
+   set pname ""
+   catch { set pname $mom_parent_group_name }
+
+   # 用户选中顶层几何组后处理时，NX 第一次组事件可能给出
+   # mom_group_name=右端面 且 mom_parent_group_name=右端面。
+   # 这是根选择组，不是真正的父子关系，按根组记录。
+   if { $gname != "" && $pname == $gname } {
+      set pname "NC_PROGRAM"
+   }
+
+   # 若原始 MOM_start_of_group 和后装的拦截器在同一事件中都调用本函数，避免重复入栈。
+   if { $gname != "" && [llength $my_group_stack] > 0 && [lindex $my_group_stack end] == $gname } {
+      if { [info exists my_group_level_map($gname)] && $my_group_level_map($gname) == $pname } {
+         return
+      }
+   }
+
+   # NX 有时会把当前子组的 parent 漏报成 NC_PROGRAM，尤其是上层组仅作管理时。
+   # 只要当前组栈里还有上一层组，就优先按栈恢复真实父级，支持任意命名。
+   if { $gname != "" && [llength $my_group_stack] > 0 } {
+      set stack_parent [lindex $my_group_stack end]
+      if { $stack_parent != "" && $stack_parent != $gname } {
+         if { $pname == "" || $pname == "NC_PROGRAM" || $pname == $gname } {
+            set pname $stack_parent
+         }
+      }
+   }
+
+   catch { PB_CMD_smart_route_debug "MOM_start_of_group before_stack" }
+
+   if { $gname != "" } {
+      set my_group_level_map($gname) $pname
+      if { $pname != "" && $pname != "NC_PROGRAM" } {
+         set idx [lsearch -exact $my_group_stack $pname]
+         if { $idx != -1 } {
+            set my_group_stack [lrange $my_group_stack 0 $idx]
+         } else {
+            set my_group_stack [list $pname]
+         }
+      } else {
+         set my_group_stack [list]
+      }
+      lappend my_group_stack $gname
+   }
+
+   catch { PB_CMD_smart_route_debug "MOM_start_of_group after_stack" }
+}
+
+
+#=============================================================
 proc MOM_start_of_group { } {
 #=============================================================
   global mom_sys_group_output mom_group_name group_level ptp_file_name
   global mom_sequence_number mom_sequence_increment mom_sequence_frequency
   global mom_sys_ptp_output pb_start_of_program_flag
+
+   catch { PB_CMD_record_smart_group_start }
 
    if { ![hiset group_level] } {
       set group_level 0
@@ -2145,6 +2237,215 @@ proc PB_CMD_remember_cleanup_file { cleanup_file } {
 }
 
 
+proc PB_CMD_smart_safe_folder_name { raw_name fallback_name } {
+#=============================================================
+# 清洗 Windows/Unix 文件夹非法字符，保留中文部件名。
+#=============================================================
+    set clean_name [string trim $raw_name]
+    if { $clean_name == "" } { set clean_name [string trim $fallback_name] }
+    if { $clean_name == "" } { set clean_name "NC_OUTPUT" }
+    set clean_name [string map [list "<" "_" ">" "_" ":" "_" "\"" "_" "/" "_" "\\" "_" "|" "_" "?" "_" "*" "_"] $clean_name]
+    return $clean_name
+}
+
+
+proc PB_CMD_smart_part_output_dir { base_dir } {
+#=============================================================
+# 总输出目录固定为：部件所在目录/部件名。
+# Journal 会优先通过 NX_SMART_POST_PART_NAME 传入真实部件名；
+# 普通后处理则从 NX/MOM 变量和原始输出文件名兜底推断。
+#=============================================================
+    global ptp_file_name my_original_ptp_file_name mom_output_file_basename
+    global mom_part_name mom_part_file_name mom_part_filename mom_part_full_name
+
+    set part_name ""
+    if { [info exists ::env(NX_SMART_POST_PART_NAME_UTF8_HEX)] && $::env(NX_SMART_POST_PART_NAME_UTF8_HEX) != "" } {
+        catch {
+            set part_name [encoding convertfrom utf-8 [binary format H* $::env(NX_SMART_POST_PART_NAME_UTF8_HEX)]]
+        }
+    }
+    if { $part_name == "" && [info exists ::env(NX_SMART_POST_PART_NAME)] && $::env(NX_SMART_POST_PART_NAME) != "" } {
+        set part_name $::env(NX_SMART_POST_PART_NAME)
+        catch { set part_name [encoding convertfrom utf-8 $part_name] }
+    }
+
+    foreach var_name {mom_part_name mom_part_file_name mom_part_filename mom_part_full_name} {
+        if { $part_name != "" } { break }
+        if { [info exists $var_name] } {
+            set value [set $var_name]
+            if { $value != "" } {
+                catch { set value [encoding convertfrom gbk $value] }
+                set part_name [file rootname [file tail $value]]
+            }
+        }
+    }
+
+    if { $part_name == "" && [info exists mom_output_file_basename] && $mom_output_file_basename != "" } {
+        if { ![string match -nocase "NC_PROGRAM" $mom_output_file_basename] } {
+            set part_name [file rootname [file tail $mom_output_file_basename]]
+        }
+    }
+
+    foreach path_var {my_original_ptp_file_name ptp_file_name} {
+        if { $part_name != "" } { break }
+        if { [info exists $path_var] } {
+            set value [set $path_var]
+            if { $value != "" } {
+                catch { set value [encoding convertfrom gbk $value] }
+                set root_name [file rootname [file tail $value]]
+                if { $root_name != "" && ![string match -nocase "NC_PROGRAM" $root_name] } {
+                    set part_name $root_name
+                }
+            }
+        }
+    }
+
+    set part_folder [PB_CMD_smart_safe_folder_name $part_name "NC_OUTPUT"]
+
+    set root_dir $base_dir
+    set base_tail [file tail $root_dir]
+    if { [string equal -nocase $base_tail $part_folder] } {
+        set root_dir [file dirname $root_dir]
+    }
+
+    set output_dir [file nativename [file join $root_dir $part_folder]]
+    catch { file mkdir $output_dir }
+    return $output_dir
+}
+
+
+proc PB_CMD_windows_focus_or_open_folder { folder_path } {
+#=============================================================
+# Windows: 如果目标文件夹已经在资源管理器中打开，则激活该窗口；否则打开新窗口。
+# 注意：不能只做 Tcl 侧短时间去重后直接 return；用户连续后处理时仍然需要
+# 把已经打开的输出目录切到前台。
+#=============================================================
+    if { $folder_path == "" } { return }
+
+    set temp_dir ""
+    catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
+    if { $temp_dir == "" } {
+        if { [info exists ::env(TMP)] } {
+            set temp_dir $::env(TMP)
+        } elseif { [info exists ::env(TEMP)] } {
+            set temp_dir $::env(TEMP)
+        } else {
+            set temp_dir "C:/Temp"
+        }
+    }
+
+    set clicks "123456"
+    catch { set clicks [clock clicks] }
+    set focus_ps1 [file nativename [file join $temp_dir "nx_focus_output_${clicks}.ps1"]]
+    set target_path [file nativename $folder_path]
+    set target_ps [string map [list {'} {''}] $target_path]
+
+    if { [catch {
+        set f [open $focus_ps1 w]
+        set ps_ob "\173"
+        set ps_cb "\175"
+        puts $f {[Console]::OutputEncoding = [System.Text.Encoding]::UTF8}
+        puts -nonewline $f {$targetPath = '}
+        puts -nonewline $f $target_ps
+        puts $f {'}
+        puts $f "function Normalize-FolderPath(\[string\]\$path) $ps_ob"
+        puts $f {    if ([string]::IsNullOrWhiteSpace($path)) { return $null }}
+        puts $f {    try { return ([System.IO.DirectoryInfo]::new($path)).FullName.TrimEnd([char]92).ToLowerInvariant() } catch { }}
+        puts $f {    try { return [System.IO.Path]::GetFullPath($path).TrimEnd([char]92).ToLowerInvariant() } catch { return $null }}
+        puts $f $ps_cb
+        puts $f "function Path-From-LocationUrl(\[string\]\$url) $ps_ob"
+        puts $f {    if ([string]::IsNullOrWhiteSpace($url)) { return $null }}
+        puts $f {    try { if ($url.StartsWith('file:', [System.StringComparison]::OrdinalIgnoreCase)) { return ([System.Uri]$url).LocalPath } } catch { }}
+        puts $f {    return $null}
+        puts $f $ps_cb
+        puts $f {$targetPath = Normalize-FolderPath $targetPath}
+        puts $f {Add-Type @'}
+        puts $f {using System;}
+        puts $f {using System.Runtime.InteropServices;}
+        puts $f "public class Win32Focus $ps_ob"
+        puts $f {    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);}
+        puts $f {    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);}
+        puts $f $ps_cb
+        puts $f {'@}
+        puts $f {$shell = New-Object -ComObject Shell.Application}
+        puts $f {$matched = $false}
+        puts $f "foreach (\$win in \$shell.Windows()) $ps_ob"
+        puts $f "    try $ps_ob"
+        puts $f {        $paths = @()}
+        puts $f {        try { $paths += $win.Document.Folder.Self.Path } catch { }}
+        puts $f {        try { $paths += (Path-From-LocationUrl $win.LocationURL) } catch { }}
+        puts $f "        foreach (\$path in \$paths) $ps_ob"
+        puts $f "            if ((Normalize-FolderPath \$path) -eq \$targetPath) $ps_ob"
+        puts $f {            $hwnd = [IntPtr]::new([int64]$win.HWND)}
+        puts $f {            [Win32Focus]::ShowWindow($hwnd, 9) | Out-Null}
+        puts $f {            [Win32Focus]::SetForegroundWindow($hwnd) | Out-Null}
+        puts $f {            $matched = $true}
+        puts $f {            break}
+        puts $f "            $ps_cb"
+        puts $f "        $ps_cb"
+        puts $f {        if ($matched) { break }}
+        puts $f "    $ps_cb catch $ps_ob $ps_cb"
+        puts $f $ps_cb
+        puts $f {if (-not $matched -and $targetPath) { Start-Process explorer.exe -ArgumentList ('"' + $targetPath + '"') }}
+        puts $f {Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue}
+        close $f
+        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $focus_ps1 &
+    } err] } {
+        catch { exec explorer.exe $target_path & }
+    }
+}
+
+
+proc PB_CMD_open_smart_nc_output_dir { } {
+#=============================================================
+# 后处理完成后只打开一次总输出目录（部件名目录）。
+# 批量后处理多个一级组时，后续 MOM_end_of_program 不再重复弹 Explorer。
+#=============================================================
+    global my_out_dir tcl_platform
+
+    set open_dir ""
+    if { [info exists my_out_dir] && $my_out_dir != "" } {
+        catch { set open_dir [file normalize $my_out_dir] }
+    }
+
+    if { $open_dir == "" || ![file isdirectory $open_dir] } { return }
+
+    set open_dir_native [file nativename $open_dir]
+    set open_dir_key ""
+    catch { set open_dir_key [string tolower [file normalize $open_dir_native]] }
+    if { $open_dir_key == "" } { set open_dir_key [string tolower $open_dir_native] }
+
+    # 若 Python Journal 执行批量后处理，会告诉后处理器当前是第几个/总几个。
+    # 这时只允许最后一个对象结束时打开/切换目录；直接 NX 原生后处理没有这些变量。
+    set batch_index 0
+    set batch_total 0
+    if { [info exists ::env(NX_SMART_POST_BATCH_INDEX)] } {
+        catch { scan $::env(NX_SMART_POST_BATCH_INDEX) "%d" batch_index }
+    }
+    if { [info exists ::env(NX_SMART_POST_BATCH_TOTAL)] } {
+        catch { scan $::env(NX_SMART_POST_BATCH_TOTAL) "%d" batch_total }
+    }
+    if { $batch_total > 1 && $batch_index > 0 && $batch_index < $batch_total } {
+        return
+    }
+
+    # 记录最近一次目录，但不要因为命中记录就 return。
+    # 已打开目录应切换到现有 Explorer 窗口；是否新开窗口由 Windows helper 判断。
+    set now_ms 0
+    catch { set now_ms [expr {[clock seconds] * 1000}] }
+    set ::env(NX_SMART_POST_OPENED_OUTPUT_DIR) $open_dir_key
+    set ::env(NX_SMART_POST_OPENED_OUTPUT_TIME_MS) $now_ms
+
+    if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
+        catch { PB_CMD_windows_focus_or_open_folder $open_dir_native }
+    } elseif { [info exists tcl_platform(os)] && [string match -nocase "Darwin" $tcl_platform(os)] } {
+        catch { exec open $open_dir_native & }
+    } else {
+        catch { exec xdg-open $open_dir_native & }
+    }
+}
+
+
 proc PB_CMD_cleanup_smart_grouping { } {
 #=============================================================
 # 清理智能分组系统的资源
@@ -2506,6 +2807,13 @@ return
 
 
 #=============================================================
+proc PB_CMD_is_cam_root_parent { group_name } {
+#=============================================================
+    return [expr {$group_name == "" || $group_name == "NC_PROGRAM" || $group_name == "NONE"}]
+}
+
+
+#=============================================================
 proc PB_CMD_get_group_hierarchy { } {
 #=============================================================
 # 获取当前操作的完整程序组层级路径
@@ -2517,7 +2825,7 @@ proc PB_CMD_get_group_hierarchy { } {
     set current_group $mom_group_name
 
     # 沿着 parent 链向上追溯
-    while { $current_group != "" && $current_group != "NC_PROGRAM" } {
+    while { ![PB_CMD_is_cam_root_parent $current_group] } {
         lappend hierarchy $current_group
         if { [info exists my_group_level_map($current_group)] } {
             set current_group $my_group_level_map($current_group)
@@ -2551,13 +2859,85 @@ proc PB_CMD_get_parent_group { } {
 
 
 #=============================================================
+proc PB_CMD_smart_route_debug { tag } {
+#=============================================================
+# Optional route debug. Enable with environment variable NX_SMART_ROUTE_DEBUG=1
+# or global my_smart_route_debug=1 before postprocessing.
+#=============================================================
+    global my_smart_route_debug my_out_dir
+    global mom_operation_name mom_group_name mom_parent_group_name mom_output_file_basename ptp_file_name
+    global my_group_stack my_group_level_map
+
+    # 默认关闭，避免每次后处理生成很大的 route debug 日志。
+    # 需要排障时设置 my_smart_route_debug=1 或环境变量 NX_SMART_ROUTE_DEBUG=1。
+    set debug_on 0
+    if { [info exists my_smart_route_debug] && $my_smart_route_debug == 1 } { set debug_on 1 }
+    if { [info exists ::env(NX_SMART_ROUTE_DEBUG)] && $::env(NX_SMART_ROUTE_DEBUG) == 1 } { set debug_on 1 }
+    if { !$debug_on } { return }
+
+    set debug_dirs [list]
+    if { [info exists my_out_dir] && $my_out_dir != "" } { lappend debug_dirs $my_out_dir }
+    catch {
+        if { [info exists ptp_file_name] && $ptp_file_name != "" } {
+            lappend debug_dirs [file dirname $ptp_file_name]
+        }
+    }
+    catch {
+        set tmp_dir [MOM_ask_env_var UGII_TMP_DIR]
+        if { $tmp_dir != "" } { lappend debug_dirs $tmp_dir }
+    }
+    lappend debug_dirs "."
+
+    set debug_file ""
+    set f ""
+    foreach debug_dir $debug_dirs {
+        if { $debug_dir == "" } { continue }
+        catch { file mkdir $debug_dir }
+        set candidate_file [file nativename [file join $debug_dir "nx_smart_route_debug.log"]]
+        if { ![catch { open $candidate_file a } opened_file] } {
+            set debug_file $candidate_file
+            set f $opened_file
+            break
+        }
+    }
+    if { $f == "" } { return }
+
+    catch {
+        puts $f "==== $tag ===="
+        catch { puts $f "time=[clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}]" }
+        foreach var_name {mom_operation_name mom_group_name mom_parent_group_name mom_output_file_basename ptp_file_name} {
+            if { [info exists $var_name] } {
+                puts $f "$var_name=[set $var_name]"
+            } else {
+                puts $f "$var_name=<UNSET>"
+            }
+        }
+        if { [info exists my_group_stack] } {
+            puts $f "my_group_stack=$my_group_stack"
+        } else {
+            puts $f "my_group_stack=<UNSET>"
+        }
+        if { [array exists my_group_level_map] } {
+            foreach key [lsort [array names my_group_level_map]] {
+                puts $f "my_group_level_map($key)=$my_group_level_map($key)"
+            }
+        } else {
+            puts $f "my_group_level_map=<UNSET>"
+        }
+        close $f
+    }
+    catch { close $f }
+}
+
+
+#=============================================================
 proc PB_CMD_get_parent_group_name { } {
 #=============================================================
 # 获取父程序组名称 (简化版本)
 # 实际项目中可能需要通过 NX Open API 获取
 #
   # 这里简化处理，假设组名包含层级信息
-  # 例如：RIGHT 是 TOP 的子组，组名可能是 "TOP\\RIGHT"
+  # 例如：组名可能包含父子层级分隔符。
 
   global mom_group_name
 
@@ -2714,6 +3094,7 @@ proc PB_CMD_init_smart_grouping { } {
 #=============================================================
     global my_out_dir my_group_level_map my_group_has_direct_ops my_group_route_prefix my_valid_files ptp_file_name
     global my_original_ptp_file_name mom_sys_list_output
+    global my_cam_hierarchy_cache_loaded my_cam_hierarchy_cache_file
 
     # 保存原始的 ptp_file_name，防止 NX 记住被我们修改过的路径
     if { [info exists ptp_file_name] } {
@@ -2730,20 +3111,20 @@ proc PB_CMD_init_smart_grouping { } {
         # 剥离可能因为 NX 记忆而残留的子目录，找到真正的根目录
         while {1} {
             set tail [file tail $temp_dir]
-            if { $tail == "DEFAULT" || $tail == "二级目录处理成单一NC文件" || [regexp {^(TOP|LEFT|RIGHT|RIG|LEF).*} $tail] } {
+            if { $tail == "DEFAULT" || $tail == "二级目录处理成单一NC文件" } {
                 set temp_dir [file dirname $temp_dir]
             } else {
                 break
             }
         }
-        set my_out_dir $temp_dir
+        set my_out_dir [PB_CMD_smart_part_output_dir $temp_dir]
     } else {
         set env_dir ""
         catch { set env_dir [file nativename [MOM_ask_env_var UGII_CAM_OUTPUT_DIR]] }
         catch {
             set env_dir [encoding convertfrom gbk $env_dir]
         }
-        set my_out_dir $env_dir
+        set my_out_dir [PB_CMD_smart_part_output_dir $env_dir]
     }
 
     catch { unset my_group_level_map }
@@ -2753,6 +3134,9 @@ proc PB_CMD_init_smart_grouping { } {
     catch { unset my_group_route_prefix }
     array set my_group_route_prefix {}
     set my_valid_files [list]
+
+    set my_cam_hierarchy_cache_loaded 0
+    catch { set my_cam_hierarchy_cache_loaded [PB_CMD_user_load_cam_hierarchy_cache] }
 
     global my_has_groups my_header_written
     set my_has_groups 0
@@ -2765,51 +3149,7 @@ proc PB_CMD_init_smart_grouping { } {
         }
     }
     proc MOM_start_of_group { } {
-        global mom_group_name mom_parent_group_name my_group_level_map my_group_stack my_has_groups
-        set my_has_groups 1
-        if { ![info exists my_group_stack] } { set my_group_stack [list] }
-
-        set gname ""
-        catch { set gname $mom_group_name }
-        if { $gname == "" } { catch { set gname [MOM_ask_group_name] } }
-
-        set pname ""
-        catch { set pname $mom_parent_group_name }
-
-        # NX 有时会把当前子组的 parent 漏报成 NC_PROGRAM，尤其是上层组仅作管理时。
-        # 只要当前组栈里还有上一层组，就优先按栈恢复真实父级，支持任意命名。
-        if { $gname != "" && [llength $my_group_stack] > 0 } {
-            set stack_parent [lindex $my_group_stack end]
-            if { $stack_parent != "" && $stack_parent != $gname } {
-                if { $pname == "" || $pname == "NC_PROGRAM" || $pname == "PROGRAM" || $pname == $gname } {
-                    set pname $stack_parent
-                }
-            }
-        }
-
-        # 不再按组名格式猜父级；形如 XMBL-BOT-05 的三级组也可能带“-数字”。
-        # 父级只来自 NX 原生变量或当前组栈，避免生成根目录下的错误文件夹。
-
-        if { $gname != "" } {
-            set my_group_level_map($gname) $pname
-            # 检查父组是否在栈中，以处理平级组或根组切换
-            if { $pname != "" && $pname != "NC_PROGRAM" && $pname != "PROGRAM" } {
-                set idx [lsearch -exact $my_group_stack $pname]
-                if { $idx != -1 } {
-                    # 父组在栈中，截断栈到父组位置
-                    set my_group_stack [lrange $my_group_stack 0 $idx]
-                } else {
-                    # 父组不在栈中，说明父组被漏掉了（通常是因为用户直接选中了根节点后处理）
-                    # 我们需要将父组补入栈中
-                    set my_group_stack [list $pname]
-                }
-            } else {
-                # 根目录组，清空栈
-                set my_group_stack [list]
-            }
-
-            lappend my_group_stack $gname
-        }
+        catch { PB_CMD_record_smart_group_start }
         if { [llength [info commands MOM_start_of_group_orig]] } {
             catch { MOM_start_of_group_orig }
         }
@@ -3494,11 +3834,7 @@ proc PB_CMD_program_header { } {
     set mom_my_z_min [format "%.3f" $z_min]
 
     # 新增：程序头强制 Z 轴回零，防止个别情况撞刀
-    set o_num "0001"
-    if { [regexp {([0-9]+)} $mom_my_prog_name match num] } {
-        if { ![scan $num "%d" num_dec] } { set num_dec 1 }
-        set o_num [format "%04d" $num_dec]
-    }
+    set o_num [PB_CMD_smart_program_number $mom_my_prog_name]
     catch { output_literal_gbk "O$o_num" }
     catch { output_literal_gbk "(PROGRAM: $mom_my_prog_name)" }
     catch { output_literal_gbk "(DATE: $mom_my_date_str)" }
@@ -3855,6 +4191,8 @@ proc PB_CMD_smart_file_switch { } {
 
     if { ![info exists mom_operation_name] || $mom_operation_name == "" } { return }
 
+    catch { PB_CMD_smart_route_debug "PB_CMD_smart_file_switch start" }
+
     # 使用 my_group_stack 确定层级
     set op_parent ""
     set op_grandparent ""
@@ -3877,7 +4215,7 @@ proc PB_CMD_smart_file_switch { } {
         catch { set op_grandparent $mom_parent_group_name }
 
         if { $op_parent == $mom_operation_name } {
-            if { $op_grandparent != "" && $op_grandparent != $mom_operation_name && $op_grandparent != "NC_PROGRAM" && $op_grandparent != "PROGRAM" } {
+            if { ![PB_CMD_is_cam_root_parent $op_grandparent] && $op_grandparent != $mom_operation_name } {
                 set op_parent $op_grandparent
                 set op_grandparent ""
             } elseif { [info exists my_group_level_map($mom_operation_name)] } {
@@ -3902,16 +4240,16 @@ proc PB_CMD_smart_file_switch { } {
     set route_stack [list]
     if { [info exists my_group_stack] && [llength $my_group_stack] > 0 } {
         set route_stack $my_group_stack
-    } elseif { $op_parent != "" && $op_parent != "NC_PROGRAM" && $op_parent != "PROGRAM" } {
+    } elseif { ![PB_CMD_is_cam_root_parent $op_parent] } {
         set route_stack [list $op_parent]
         set ancestor ""
-        if { $op_grandparent != "" && $op_grandparent != "NC_PROGRAM" && $op_grandparent != "PROGRAM" && $op_grandparent != $op_parent } {
+        if { ![PB_CMD_is_cam_root_parent $op_grandparent] && $op_grandparent != $op_parent } {
             set ancestor $op_grandparent
         } elseif { [info exists my_group_level_map($op_parent)] } {
             set ancestor $my_group_level_map($op_parent)
         }
         set ancestor_guard 0
-        while { $ancestor != "" && $ancestor != "NC_PROGRAM" && $ancestor != "PROGRAM" && $ancestor_guard < 10 } {
+        while { ![PB_CMD_is_cam_root_parent $ancestor] && $ancestor_guard < 10 } {
             if { [lsearch -exact $route_stack $ancestor] >= 0 } { break }
             set route_stack [linsert $route_stack 0 $ancestor]
             incr ancestor_guard
@@ -3938,7 +4276,43 @@ proc PB_CMD_smart_file_switch { } {
             set route_stack $rebuilt_route_stack
         }
     }
+
+    # 如果 NX 把真实工序名误放进 route_stack 末尾，先移除，避免输出成 工序/工序_刀具.nc。
+    if { [llength $route_stack] > 0 && [lindex $route_stack end] == $mom_operation_name } {
+        set route_stack [lrange $route_stack 0 end-1]
+    }
+
+    # 通用祖先恢复：不按工序名前缀猜测，只使用 MOM_start_of_group 记录的
+    # my_group_level_map(parent 链) 补回被 NX 局部后处理漏掉的外层组。
+    if { [llength $route_stack] > 0 } {
+        set first_route_group [lindex $route_stack 0]
+        set ancestor ""
+        if { [info exists my_group_level_map($first_route_group)] } {
+            set ancestor $my_group_level_map($first_route_group)
+        }
+        set ancestor_guard 0
+        while { ![PB_CMD_is_cam_root_parent $ancestor] && $ancestor_guard < 20 } {
+            if { [lsearch -exact $route_stack $ancestor] >= 0 } { break }
+            set route_stack [linsert $route_stack 0 $ancestor]
+            incr ancestor_guard
+            if { [info exists my_group_level_map($ancestor)] } {
+                set ancestor $my_group_level_map($ancestor)
+            } else {
+                set ancestor ""
+            }
+        }
+    }
+    catch { PB_CMD_smart_route_debug "PB_CMD_smart_file_switch before_parent_sync" }
+
     set stack_len [llength $route_stack]
+    if { $stack_len > 0 } {
+        set op_parent [lindex $route_stack end]
+        if { $stack_len > 1 } {
+            set op_grandparent [lindex $route_stack end-1]
+        } else {
+            set op_grandparent "NC_PROGRAM"
+        }
+    }
 
     if { ![info exists my_group_has_direct_ops] } {
         array set my_group_has_direct_ops {}
@@ -3955,7 +4329,7 @@ proc PB_CMD_smart_file_switch { } {
     }
 
     # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为“管理组”。
-    if { $op_parent != "" && $op_parent != "NC_PROGRAM" && $op_parent != "PROGRAM" } {
+    if { ![PB_CMD_is_cam_root_parent $op_parent] } {
         set my_group_has_direct_ops($op_parent) 1
         if { [llength $route_stack] > 0 } {
             set my_group_route_prefix($op_parent) $route_stack
@@ -3965,7 +4339,7 @@ proc PB_CMD_smart_file_switch { } {
     # 有限剥离管理组：最多向下跳过 3 层没有直接工序的管理组，不无限递归。
     # 剥离后的第 1 层按原“一级组”处理；第 2 层按原“二级组合并 NC”处理。
     set effective_base 0
-    set max_manager_depth 3
+    set max_manager_depth 10
     if { [info exists my_max_manager_group_depth] && $my_max_manager_group_depth != "" } {
         catch { scan $my_max_manager_group_depth "%d" max_manager_depth }
         if { $max_manager_depth < 0 } { set max_manager_depth 0 }
@@ -3980,7 +4354,7 @@ proc PB_CMD_smart_file_switch { } {
 
     set effective_depth [expr {$stack_len - $effective_base}]
 
-    if { $op_parent == "" || $op_parent == "NC_PROGRAM" || $op_parent == "PROGRAM" } {
+    if { [PB_CMD_is_cam_root_parent $op_parent] } {
         # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为工序名
         set parent_dir ""
         set file_target "${mom_operation_name}_${safe_tool_name}"
@@ -4261,11 +4635,7 @@ proc PB_CMD_smart_file_switch { } {
             set z_min [expr {[info exists mom_z_min] ? $mom_z_min : 0.0}]
             set mom_my_z_min [format "%.3f" $z_min]
             catch { MOM_do_template rewind_stop_code }
-            set o_num "0001"
-            if { [regexp {([0-9]+)} $mom_my_prog_name match num] } {
-                if { ![scan $num "%d" num_dec] } { set num_dec 1 }
-                set o_num [format "%04d" $num_dec]
-            }
+            set o_num [PB_CMD_smart_program_number $mom_my_prog_name]
             catch { output_literal_gbk "O$o_num" }
             catch { output_literal_gbk "(PROGRAM: $mom_my_prog_name)" }
             catch { output_literal_gbk "(DATE: $mom_my_date_str)" }
@@ -5351,7 +5721,7 @@ if [info exists mom_sys_start_of_program_flag] {
 }
 
 
-set cam_post_user_tcl "new_post_user.tcl"
+set cam_post_user_tcl "smart_post_user.tcl"
 
 
 

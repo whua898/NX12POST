@@ -1,69 +1,107 @@
-# NX12 后处理项目专属 AI 行为准则 (CRITICAL RULES)
+# NX12 Smart Post Agent Rules
 
-**【角色设定与核心行为准则】**
-你是一个资深的 NX 后处理开发工程师。作为本项目的 AI 编程助手，你必须在每次对话和操作中**最高优先级**严格遵守以下规则：
-- **先理解后行动 (Read-Modify-Write)**：在修改任何代码前，必须先使用工具查看文件上下文，绝不凭空猜测代码结构。
-- **无缝错误恢复**：遇到编译或执行错误时，不中断工作流，必须通过连续的工具调用自主完成修复。
+本目录是 Siemens NX 12 智能后处理项目。修改这里的文件时，优先保证 NX12/Tcl 兼容性、后处理输出稳定性，以及文档与最终实现一致。
 
-## 1. 物理隔离与版本控制准则 (最核心铁律)
-**绝对禁止原地修改历史业务文件！原文件是神圣不可侵犯的备份！**
+## 必守原则
 
-- **禁止行为**：严禁直接修改现有的 `.tcl`, `.def`, `.pui` 等业务代码文件（例如 `new_post.tcl`），除非用户明确要求。
-- **推荐工作流**：
-  1. **优先使用 Git**：如果项目已初始化 Git，先从远程仓库拉取最新版本 (`git pull`)
-  2. **复制新建**：当需要测试新逻辑时，可以复制文件创建新版本。例如：`copy new_post.tcl new_post_v6.tcl`
-  3. **在新文件上修改**：所有的实验性代码编辑、逻辑修复，建议在新生成的文件上进行
-  4. **验证后合并**：测试通过后，再将更改应用到主文件或直接提交到 Git
+- 修改前先阅读相关上下文，禁止凭印象改 Tcl/Python 逻辑。
+- 默认只修改当前工作区内文件，不创建虚拟环境，不安装依赖。
+- `1111.tcl`、`Original/` 视为稳定基线/备份，除非用户明确要求，不要修改。
+- `ugpost_base.tcl` 只读参考，不要修改。
+- 当前正式后处理器是 `smart_post.tcl` / `smart_post.tcl.tex`，核心自动调用脚本是 `NX_Smart_Post/application/get_cam_hierarchy_and_post.py`。
+- Tcl 改动必须考虑 NX12 老 Tcl 兼容性，避免使用过新的 Tcl 命令；优先使用 `catch`、`info exists`、`info commands` 做防御。
+- 不要破坏原始汇总 NC 预览链路：`my_original_ptp_file_name`、`my_original_ptp_chan`、`PB_CMD_before_output` 镜像写入是 NX “列出输出/信息窗口”显示 NC 代码的关键。
 
-## 2. NX12 多级程序组输出规范
-在处理 UG NX12 TCL 后处理逻辑时，必须满足以下多级程序组拆分逻辑：
-- **一级组 (Level 1)**：例如 `TOP`, `RIGHT`, `LEFT`。一级组的名称必须作为输出的**文件夹名称**。
-- **二级组 (Level 2)**：例如 `TOP-03`。二级组的名称必须作为输出的 **NC 文件名**。二级组内的所有工序（在同一刀具下）必须**合并输出**到这一个 `.nc` 文件中。
-- **独立工序**：如果工序直接位于一级组下（例如 `TOP-01`），则以工序名作为 NC 文件名单独输出。
-- **层级获取与拦截**：
-  - 必须准确利用 `mom_parent_group_name`、`mom_group_name` 以及自定义的堆栈（如 `my_group_stack`）来判断当前工序的层级。
-  - 在 `MOM_start_of_group` 等原生事件中，注意不要让原生的 `return` 逻辑阻断了自定义堆栈的记录。
-  - 在 `MOM_start_of_path` 中接管文件切换时，必须确保调用 `MOM_start_of_path_orig` 以保留原生机床初始化逻辑。
+## 最终实现概要
 
-## 3. 核心业务需求与技术架构
-**🎯 核心目标**
-为不带刀库的机床开发一个智能 UG NX12 后处理器，实现多级程序组的自动化文件输出管理。
+项目由两个脚本配合实现：
 
-**📌 三大核心需求**
-1. **选中 NC_PROGRAM 时**：
-   - 一级组（如 `TOP`）生成文件夹。
-   - 独立工序（如 `TOP-01`）生成单独 NC 文件（`TOP/TOP-01.nc`）。
-   - 二级组（如 `TOP-03`）生成单一 NC 文件（`TOP/TOP-03.nc`），包含其下所有子工序，且只有单一程序头和尾。
-2. **选中单个或多个一级程序组时**：
-   - 选中 `TOP` → 输出：`TOP/TOP-01.nc`, `TOP/TOP-02.nc`, `TOP/TOP-03.nc`
-3. **选中工序或二级组时**：
-   - 选中 `TOP-01` → 输出：`TOP/TOP-01.nc`
-   - 选中 `TOP-03` (二级组) → 输出：`TOP/TOP-03.nc`（包含子工序，单一程序头、尾)
-*注意：绝对不要默认生成的每个一级程序组对应合并NC文件。*
+- `get_cam_hierarchy_and_post.py`
+  - 在 NX Journal 中执行。
+  - 导出 CAM 程序组层级缓存 `nx_cam_hierarchy.tcl`。
+  - 读取当前选中 CAM 对象；无选择时回退到顶层程序根。
+  - 默认调用 `DEFAULT_POST_NAME = "smart_post"`，可用环境变量 `NX_SMART_POST_NAME` 覆盖。
+  - 设置 `NX_SMART_POST_USE_CACHE=1`，让 Tcl 后处理器只在本次自动运行中使用刚生成的层级缓存。
+  - 设置 `NX_SMART_POST_PART_NAME` 和 `NX_SMART_POST_PART_NAME_UTF8_HEX`，辅助 Tcl 端生成“部件名”总输出目录。
+  - 自动批量后处理多个根对象时设置 `NX_SMART_POST_BATCH_INDEX` / `NX_SMART_POST_BATCH_TOTAL`，Tcl 端只在最后一次打开输出目录。
 
-**🏗️ 技术架构与 TCL 核心处理逻辑**
-- **无损注入与防覆盖 (Hooking/AOP)**：为防止 UG 后处理构造器覆盖自定义代码，使用 TCL 的 `rename` 机制（如 `rename MOM_start_of_path MOM_start_of_path_orig`）挂载拦截器，在原生事件前后动态接管控制权。
-- **防御性编程与异常隔离**：在处理 TCL 脚本时，强制要求安全调用。必须实施严格的 `catch` 异常捕获，并使用 `[info exists ...]` 检查变量、`[info commands ...]` 检查函数是否存在，防止因 NX 内部变量缺失导致机床后处理直接崩溃（如 1770002 错误）。
-- **终极兜底清理与突破死锁 (Garbage Collection)**：
-  - **白名单机制**：只有经过 `PB_CMD_smart_file_switch` 路由生成的文件才加入 `my_valid_files` 白名单。
-  - **流氓文件拦截**：在 `MOM_end_of_program` 阶段，扫描根目录，对不在白名单中的 `.nc` 和 `.tmp` 文件执行清理。
-  - **突破文件占用锁**：若 NX 主进程死锁导致 `file delete` 失败，引入后台静默进程强杀方案延迟强制删除垃圾文件。
-- **路径规范化 (Path Normalization)**：MOM 命令对路径极其敏感，强制使用 `string map {"\\" "/"}` 将所有反斜杠替换为正斜杠，消除路径解析错误。
-- **刀具一致性检查**：针对无刀库机床，采用"刀具名称+类型+直径+下半径+总长"构建指纹进行比对，防止二级组内换刀错误。
-- **文件结构**：核心逻辑集中在 `new_post.tcl`，配合 `.def` 和 `.pui` 运行。`new_post_user.tcl` 用于扩展功能。
+- `smart_post.tcl.tex`
+  - 使用 Hook/rename 接管关键事件，同时保留原生事件逻辑。
+  - 通过缓存或 MOM 组事件维护程序组栈，按 CAM 层级路由输出文件。
+  - 输出总目录固定为：`部件所在目录/部件名/`。
+  - 支持多层管理组：管理组作为目录层级保留，最终 NC 文件仍按实际加工组/工序生成。
+  - 二级加工组合并为单个 `.nc`，并用刀具指纹防止无刀库机床混入不同刀具。
+  - 后处理结束后打开/聚焦输出总目录，并带批量/短时间去重。
+  - 后台延迟清理临时汇总 `.nc`、同名 `.ptp` 和 `.lpt`。
 
-## 4. Post Builder (PB) 兼容性与防覆盖规范 (Anti-Overwrite Strategy)
-在开发和修改 TCL 代码时，必须考虑到用户会使用 UG 自带的 Post Builder (后处理构造器) 图形界面打开并保存 `.pui` 文件。为了防止我们手写的核心逻辑被 PB 覆盖抹除，必须遵守以下规范：
-- **禁止直接修改标准事件入口**：绝对禁止将自定义逻辑（如初始化函数）直接写入 `PB_start_of_program` 或 `MOM_end_of_program` 等会被 PB 界面重新生成的标准事件中。
-- **使用自定义命令作为安全区**：所有的初始化逻辑（如 `PB_CMD_init_smart_grouping`）必须放置在自定义命令（如 `PB_CMD_kin_start_of_program`）中，因为 PB 绝对不会覆盖自定义命令的内容。
-- **UI 暴露原则 (User-Configurable Blocks)**：对于需要输出特定 NC 代码（如程序尾的 `M30`）的逻辑，优先创建独立的自定义命令（如 `PB_CMD_custom_program_footer`），并指导用户在 PB 界面中手动添加（例如添加到 Program End Sequence），而不是在底层强行 Hook `MOM_end_of_program`，以保持代码与 PB 界面的同步和可维护性。
-- **底层 Hook 的保留条件**：仅当逻辑极其复杂、位置极其敏感（如 `MOM_start_of_path` 的文件切换逻辑），暴露给 UI 容易导致用户配置失误引起崩溃时，才保留底层 Hook。且该 Hook 的注册入口必须位于安全的自定义命令中。
+## 输出规则
 
-## 5. 2026-07-08 排障经验硬规则
+- 选中 `NC_PROGRAM`：一级组生成目录；一级组下独立工序单独输出；二级组输出单一合并 NC。
+- 选中一级组：只输出该一级组下的独立工序和二级组合并文件。
+- 选中工序：输出到所属一级组目录，文件名为工序名。
+- 选中二级组：输出到所属一级组目录，文件名为二级组名，组内工序合并。
+- 不要默认生成“每个一级程序组一个总合并 NC 文件”。
 
-- **不得破坏 `1111.tcl` 验证过的 NC 显示链路**：`my_original_ptp_chan` + `PB_CMD_before_output` + 原始临时汇总 NC 是 NX “列出输出”显示 NC 代码的关键路径。
-- **不要把 `.lpt` 当成信息窗口 NC 代码的主来源**：`.lpt` 是 listing/commentary 报告文件，不能替代主 `ptp_file_name` 输出流。
-- **不要为了未勾选“列出输出”时不生成临时汇总 NC 而禁用原始汇总 NC**：该文件是必要的临时预览文件，只能优化清理时机，不能禁止生成。
-- **排查 NC 显示问题必须先对照 `1111.tcl`**：确认没有 `PB_CMD_output_combined_nc_preview` 和“仅在勾选列出输出时才维护原始组合输出文件”的旧问题逻辑。
-- **清理优化只允许动清理时机、日志、隐藏启动方式**：不要改动 `MOM_open_output_file`、`MOM_output_literal`、`PB_CMD_before_output`、`my_original_ptp_chan` 等核心输出链路。
-- **Windows 后台清理避免直接 `cmd.exe /c start`**：优先使用 `wscript.exe //B //Nologo` + `WScript.Shell.Run ..., 0, False`，避免 cmd 窗口闪现。
+示例：
+
+```text
+部件名/
+├── TOP/
+│   ├── TOP-01.nc
+│   ├── TOP-02.nc
+│   └── TOP-03.nc
+└── LEFT/
+    ├── LEFT-01.nc
+    └── LEFT-02.nc
+```
+
+## 关键输出链路禁区
+
+不要为了减少临时文件而禁止原始汇总 NC 的生成。NX 信息窗口显示 NC 代码依赖主 `ptp_file_name` 对应输出流，而不是单纯依赖 `.lpt`。
+
+必须保持：
+
+- 原始汇总 NC/预览文件短暂存在。
+- `PB_CMD_before_output` 将 `mom_o_buffer` 写入 `my_original_ptp_chan`。
+- `CLOSE_files` 或清理逻辑延迟删除临时汇总 `.nc`、同名 `.ptp`、`.lpt`。
+
+高风险误改：
+
+- 删除或禁用 `my_original_ptp_chan`。
+- 让 `PB_CMD_before_output` 不再镜像 `mom_o_buffer`。
+- 把原始汇总 NC 维护逻辑改成“只有勾选列出输出才执行”。
+- 用写 `.lpt`、`LIST_FILE_TRAILER` 或 `MOM_output_to_listing_device` 替代主 NC 预览链路。
+
+## 清理与打开目录
+
+- 勾选“列出输出”：临时文件默认至少延迟 `10000 ms` 清理。
+- 未勾选“列出输出”：临时文件默认延迟 `1000 ms` 清理。
+- 可通过 Tcl 全局变量 `my_cleanup_delay_ms` 覆盖延迟。
+- Windows 使用 `wscript.exe //B //Nologo` 启动隐藏 `.vbs`，再由 `.cmd` 执行重试删除，避免 cmd 窗口闪现。
+- 清理日志：`%TEMP%/nx_cleanup_latest.log`。
+- 自动批量后处理时按 `NX_SMART_POST_BATCH_INDEX/TOTAL` 只在最后打开输出目录。
+- 原生 NX 后处理不带批量变量时，使用 `NX_SMART_POST_OPENED_OUTPUT_DIR` 和 `NX_SMART_POST_OPENED_OUTPUT_TIME_MS` 做短时间去重。
+
+## 调试与验证
+
+- 智能路由 debug 默认关闭；排障时设置 Tcl 全局变量 `my_smart_route_debug=1` 或环境变量 `NX_SMART_ROUTE_DEBUG=1`。
+- Python 修改后至少运行：
+
+```bash
+python -m py_compile NX12POST/NX_Smart_Post/application/get_cam_hierarchy_and_post.py
+```
+
+- LaTeX 文档修改后可运行：
+
+```bash
+pdflatex main.tex
+```
+
+- Tcl 逻辑最终必须在 NX12 实机中验证，重点覆盖：选中 `NC_PROGRAM`、一级组、二级组、单工序、多层管理组、勾选/不勾选“列出输出”。
+
+## 常见故障判断
+
+- “列出输出”没有 NC 代码：优先检查 `my_original_ptp_chan` 和 `PB_CMD_before_output` 镜像链路。
+- 临时 `部件名.nc/.ptp/.lpt` 短暂出现：正常，是 NX 主输出预览链路的一部分，随后后台清理。
+- 清理失败：查看 `%TEMP%/nx_cleanup_latest.log`；有 `FAILED_LOCKED_OR_IN_USE` 通常表示 NX 或杀软仍占用文件。
+- 修改 `.tcl` 不生效：NX 可能缓存了后处理 Tcl，建议重启 NX 后复测。

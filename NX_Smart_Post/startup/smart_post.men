@@ -1,0 +1,52 @@
+VERSION 120
+
+EDIT UG_GATEWAY_MAIN_MENUBOARD
+
+! ==============================================================================
+! NX CAM 智能一键层级导出与后处理集成菜单配置 (smart_post.men)
+! ==============================================================================
+! 这是一个标准的 NX 菜单定制文件。
+! 本文件执行以下两个核心动作：
+! 1. 全局注册 `CUSTOM_HIERARCHY_POST_BTN` 按钮 ID，绑定 get_cam_hierarchy_and_post.py 脚本。
+! 2. 自动挂载该按钮到 NX CAM 导航器的所有右键弹出菜单（工序、程序、几何、刀具、方法）。
+! ==============================================================================
+
+! --------------------------------------------------------------------------
+! 步骤 1：全局注册按钮动作、标签、图标
+! --------------------------------------------------------------------------
+BUTTON CUSTOM_HIERARCHY_POST_BTN
+LABEL 一键智能层级后处理 (Smart Post)
+CONTEXT_LABEL 一键智能层级后处理 (&S)...
+BITMAP post_processor
+ACTIONS get_cam_hierarchy_and_post.py
+HELP_STRING 自动分析选中工序/组的多层级归属关系并立即调起 new_post 后处理器。
+
+! --------------------------------------------------------------------------
+! 步骤 2：经典菜单挂载（后处理功能后方）
+! --------------------------------------------------------------------------
+AFTER UG_CAM_POST_PROCESS
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+END_OF_AFTER
+
+! --------------------------------------------------------------------------
+! 步骤 3：极速右键流集成 (自动挂载到 CAM 五大视图的右键弹出菜单中)
+! --------------------------------------------------------------------------
+MODIFY UG_CAM_OP_POPUP
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+END_OF_MODIFY
+
+MODIFY UG_CAM_GEOM_POPUP
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+END_OF_MODIFY
+
+MODIFY UG_CAM_TOOL_POPUP
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+END_OF_MODIFY
+
+MODIFY UG_CAM_METHOD_POPUP
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+END_OF_MODIFY
+
+MODIFY UG_CAM_PROGRAM_POPUP
+    BUTTON CUSTOM_HIERARCHY_POST_BTN
+END_OF_MODIFY

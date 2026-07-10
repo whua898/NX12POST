@@ -1,11 +1,11 @@
 # Post Builder 操作说明
 
-本文档说明在 NX 12 Post Builder 中打开并保存 `new_post.pui` 时，哪些自定义命令必须保留、如何检查，以及哪些代码不要在 PB 里随意移动。
+本文档说明在 NX 12 Post Builder 中打开并保存 `smart_post.pui` 时，哪些自定义命令必须保留、如何检查，以及哪些代码不要在 PB 里随意移动。
 
 ## 文件对应关系
 
-- Prism 工作文件：`new_post.tcl.tex`、`new_post.pui.tex`、`new_post.def.tex`、`new_post_user.tcl.tex`
-- 给 NX/Post Builder 使用时，对应去掉 `.tex` 后缀：`new_post.tcl`、`new_post.pui`、`new_post.def`、`new_post_user.tcl`
+- Prism 工作文件：`smart_post.tcl.tex`、`smart_post.pui.tex`、`smart_post.def.tex`、`smart_post_user.tcl.tex`
+- 给 NX/Post Builder 使用时，对应去掉 `.tex` 后缀：`smart_post.tcl`、`smart_post.pui`、`smart_post.def`、`smart_post_user.tcl`
 - 稳定参考基线：`1111.tex`，只用于对照，不要修改。
 - 本次修改前已备份到：`backup_20260708_030939/`
 
@@ -129,7 +129,7 @@ PB_CMD_output_combined_nc_preview
 ## 修改后测试步骤
 
 1. 关闭并重启 NX，避免 NX 继续使用内存中的旧 Tcl。
-2. 用 `new_post.pui` 打开 PB，按上面三处检查 Start、End、Custom Command。
+2. 用 `smart_post.pui` 打开 PB，按上面三处检查 Start、End、Custom Command。
 3. 保存 PB。
 4. 用 NC_PROGRAM 测试后处理，确认输出类似：
 
