@@ -1,18 +1,18 @@
 ! ==============================================================================
 ! NX CAM Smart Post Custom Ribbon Tab (smart_post.rtb)
 ! ==============================================================================
-! è¿™æ˜¯ä¸€ä¸ªæ ‡å‡†çš„ NX Ribbon è‡ªå®šä¹‰æ–‡ä»¶ã€‚
-! å½“è¿›å…¥åŠ å·¥ (CAM/Manufacturing) çŽ¯å¢ƒæ—¶ï¼ŒNX ä¼šè‡ªåŠ¨åœ¨æœ€ä¸Šæ–¹ç”Ÿæˆä¸€ä¸ªåä¸º "Smart Post" çš„æ ‡ç­¾é¡µã€‚
+! ÕâÊÇÒ»¸ö±ê×¼µÄ NX Ribbon ×Ô¶¨ÒåÎÄ¼þ¡£
+! µ±½øÈë¼Ó¹¤ (CAM/Manufacturing) »·¾³Ê±£¬NX »á×Ô¶¯ÔÚ×îÉÏ·½Éú³ÉÒ»¸öÃûÎª "Smart Post" µÄ±êÇ©Ò³¡£
 ! ==============================================================================
 
-TITLE Smart Post ä¸€é”®åŽå¤„ç†
+TITLE Smart Post Ò»¼üºó´¦Àí
 VERSION 170
 
 
 BEGIN_GROUP SMART_POST_GRP
-    LABEL æ™ºèƒ½ä¸€é”®åŽå¤„ç†
+    LABEL ÖÇÄÜÒ»¼üºó´¦Àí
     BITMAP post_processor
 
-    ! å¼•ç”¨ smart_post.men ä¸­å®šä¹‰çš„æŒ‰é’®
+    ! ÒýÓÃ smart_post.men ÖÐ¶¨ÒåµÄ°´Å¥
     BUTTON CUSTOM_HIERARCHY_POST_BTN
 END_GROUP

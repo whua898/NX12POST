@@ -3,13 +3,13 @@ VERSION 121
 EDIT UG_GATEWAY_MAIN_MENUBAR
 
 ! ==============================================================================
-! NX CAM 智能一键层级导出与后处理集成菜单配置 (smart_post.men)
-! 按 NX MenuScript 语法：EDIT 后必须进入 AFTER/MENU/TOP_MENU 等位置块。
+! NX CAM ����һ���㼶������������ɲ˵����� (smart_post.men)
+! �� NX MenuScript �﷨��EDIT �������� AFTER/MENU/TOP_MENU ��λ�ÿ顣
 ! ==============================================================================
 
 AFTER UG_CAM_POST_PROCESS
 BUTTON CUSTOM_HIERARCHY_POST_BTN
-LABEL 一键智能层级后处理 (Smart Post)
+LABEL һ�����ܲ㼶���� (Smart Post)
 BITMAP post_processor
 ACTIONS get_cam_hierarchy_and_post.py
 END_OF_AFTER
