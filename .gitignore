@@ -1,5 +1,11 @@
-# 临时文件和日志
-*.lpt
-*.nc
-*.tmp
-*~
+# IDE
+.idea/
+*.iml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 项目本地配置（非通用）
+pyproject.toml
