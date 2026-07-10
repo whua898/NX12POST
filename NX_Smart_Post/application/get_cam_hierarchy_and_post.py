@@ -811,6 +811,9 @@ def _postprocess(setup, target, post_name, output_path, log):
     output_dir = os.path.dirname(output_path)
     batch_total = len(target)
     log.write("Postprocessing fallback roots one by one: {0}".format([_obj_name(item) for item in target]))
+    # 批量处理期间保留环境变量，直到全部完成后才清除。
+    # 这样 Tcl 后处理器在每个 MOM_end_of_program 中都能正确识别批量状态，
+    # 避免除最后一个对象外重复弹出输出目录。
     try:
         for index, item in enumerate(target, 1):
             os.environ["NX_SMART_POST_BATCH_TOTAL"] = str(batch_total)

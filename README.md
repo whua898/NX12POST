@@ -45,8 +45,8 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
 
 - 选中 `NC_PROGRAM`：一级组生成文件夹；一级组下独立工序单独输出；二级组输出单一合并 NC。
 - 选中一级组：只输出该组下的独立工序和二级组合并 NC。
-- 选中单工序：输出到所属一级组目录，文件名为工序名。
-- 选中二级组：输出到所属一级组目录，文件名为二级组名，组内工序合并。
+- 选中单工序：输出到所属一级组目录，文件名为 `工序名_刀具名.nc`。
+- 选中二级组：输出到所属一级组目录，文件名为 `二级组名_刀具名.nc`，组内工序合并。
 - 多层管理组会保留为目录层级，但不会强制把一级组整体合并成一个 NC。
 - 不默认生成“每个一级程序组一个合并 NC 文件”。
 
@@ -55,15 +55,15 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
 ```text
 部件名/
 ├── TOP/
-│   ├── TOP-01.nc
-│   ├── TOP-02.nc
-│   └── TOP-03.nc
+│   ├── TOP-01_D63R08L200.nc
+│   ├── TOP-02_D63R08L200.nc
+│   └── TOP-03_中心钻.nc
 ├── RIG/
-│   ├── RIG-01.nc
-│   └── RIG-02.nc
+│   ├── RIG-01_D63R08L200.nc
+│   └── RIG-02_D63R08L200.nc
 └── LEFT/
-    ├── LEFT-01.nc
-    └── LEFT-02.nc
+    ├── LEFT-01_D63R0.8L350.nc
+    └── LEFT-02_D63R0.8L350.nc
 ```
 
 ## Python Journal 实现要点
@@ -125,9 +125,12 @@ DELETED_OR_NOT_EXIST: ...部件名.nc
 
 ## 打开输出目录
 
-- Python Journal 批量后处理时通过 `NX_SMART_POST_BATCH_INDEX` / `NX_SMART_POST_BATCH_TOTAL` 告诉 Tcl 当前序号；Tcl 只在最后一个对象结束后打开目录。
-- 直接使用 NX 原生后处理命令时没有批量变量；Tcl 使用 `NX_SMART_POST_OPENED_OUTPUT_DIR` 和 `NX_SMART_POST_OPENED_OUTPUT_TIME_MS` 做短时间去重。
-- Windows 下优先聚焦已打开的目标资源管理器窗口，否则打开新窗口。
+逻辑实现在 `smart_post_user.tcl` 的 `PB_CMD_user_open_output_dir` 中，不会被 Post Builder 覆盖。
+
+- Python Journal 批量后处理时通过 `NX_SMART_POST_BATCH_INDEX` / `NX_SMART_POST_BATCH_TOTAL` 控制；Tcl 只在最后一个对象结束后打开目录。
+- 短时间去重：环境变量 `NX_SMART_POST_OPENED_OUTPUT_DIR` + 时间戳记录最近一次打开的目录，2 秒内不重复打开。
+- Windows 下后台执行 VBS 脚本（`wscript.exe //B //Nologo`），检测已有 Explorer 窗口，有则激活（`AppActivate`），无则打开新窗口（`Shell.Open`）。VBS 文件以 GBK 编码写入，确保中文路径正确。
+- VBS 脚本失败时回退到直接 `exec explorer.exe &`。
 
 ## 调试
 
@@ -148,6 +151,7 @@ set my_smart_route_debug 1
 - `nx_smart_post_journal.log`：Python Journal 日志，位于部件目录。
 - `nx_cam_hierarchy.tcl`：Python 导出的本次 CAM 层级缓存，位于部件目录。
 - `%TEMP%/nx_cleanup_latest.log`：后台清理日志。
+- `%TEMP%/nx_focus_output_latest.log`：输出目录打开/聚焦日志。
 
 ## 验证建议
 

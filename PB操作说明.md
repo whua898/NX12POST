@@ -134,9 +134,9 @@ PB_CMD_output_combined_nc_preview
 4. 用 NC_PROGRAM 测试后处理，确认输出类似：
 
 ```text
-NC/TOP/TOP-01.nc
-NC/TOP/TOP-02.nc
-NC/TOP/TOP-03.nc
+NC/TOP/TOP-01_D63R08L200.nc
+NC/TOP/TOP-02_D63R08L200.nc
+NC/TOP/TOP-03_中心钻.nc
 ```
 
 5. 勾选“列出输出”测试一次，确认信息窗口有 NC 代码。

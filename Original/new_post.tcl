@@ -1,6 +1,6 @@
 ########################## TCL Event Handlers ##########################
 #
-#  new_post.tcl - 3_axis_mill
+#  smart_post.tcl - 3_axis_mill
 #
 #    This is a 3-Axis Milling Machine.
 #
@@ -5077,7 +5077,7 @@ if [info exists mom_sys_start_of_program_flag] {
 }
 
 
-set cam_post_user_tcl "new_post_user.tcl"
+set cam_post_user_tcl "smart_post_user.tcl"
 
 
 

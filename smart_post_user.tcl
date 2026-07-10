@@ -217,6 +217,152 @@ if { [llength [info commands MOM_before_output]] && ![llength [info commands MOM
 
 
 # ==============================================================================
+# 目录打开去重
+# ==============================================================================
+# 实际打开输出目录的逻辑。通过文件标记实现跨后处理会话去重。
+# 存在 smart_post.tcl 中会被 Post Builder 覆盖，所以放在用户文件里。
+
+# 调试日志函数。调试完成后注释掉写文件和 puts 行（保留函数定义避免调用处报错）。
+proc PB_CMD_user_open_output_dir_debug_log { msg } {
+    # set log_file "D:/Users/wh898/PycharmProjects/NX12POST/nx_open_dir_debug.log"
+    # catch {
+    #     set f [open $log_file a]
+    #     puts $f "\[[clock format [clock seconds] -format {%H:%M:%S}]\] $msg"
+    #     close $f
+    # }
+}
+
+if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
+    proc PB_CMD_user_open_output_dir { } {
+        global my_out_dir tcl_platform
+
+        # PB_CMD_user_open_output_dir_debug_log "=== ENTER PB_CMD_user_open_output_dir ==="
+
+        set open_dir ""
+        if { [info exists my_out_dir] && $my_out_dir != "" } {
+            catch { set open_dir [file normalize $my_out_dir] }
+        }
+        if { $open_dir == "" || ![file isdirectory $open_dir] } {
+            # PB_CMD_user_open_output_dir_debug_log "SKIP: open_dir='$open_dir' not a dir"
+            return
+        }
+        # PB_CMD_user_open_output_dir_debug_log "open_dir=$open_dir"
+
+        # 批量后处理只最后一次打开目录（NW_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
+        set is_batch_skip 0
+        if { [info exists ::env(NX_SMART_POST_BATCH_INDEX)] && [info exists ::env(NX_SMART_POST_BATCH_TOTAL)] } {
+            set batch_idx $::env(NX_SMART_POST_BATCH_INDEX)
+            set batch_total $::env(NX_SMART_POST_BATCH_TOTAL)
+            # PB_CMD_user_open_output_dir_debug_log "BATCH: idx=$batch_idx total=$batch_total"
+            if { [catch { expr {$batch_idx < $batch_total} } is_not_last] } { set is_not_last 0 }
+            if { $is_not_last } {
+                # PB_CMD_user_open_output_dir_debug_log "BATCH_SKIP: not last item"
+                set is_batch_skip 1
+            }
+        }
+        if { $is_batch_skip } { return }
+
+        # 短时间去重
+        set dedup_skip 0
+        if { [info exists ::env(NX_SMART_POST_OPENED_OUTPUT_DIR)] && $::env(NX_SMART_POST_OPENED_OUTPUT_DIR) == $open_dir } {
+            set last_time_ms ""
+            if { [info exists ::env(NX_SMART_POST_OPENED_OUTPUT_TIME_MS)] } {
+                set last_time_ms $::env(NX_SMART_POST_OPENED_OUTPUT_TIME_MS)
+            }
+            set now_ms ""
+            catch { set now_ms [clock milliseconds] }
+            # PB_CMD_user_open_output_dir_debug_log "DEDUP: last_ms=$last_time_ms now_ms=$now_ms"
+            if { $last_time_ms != "" && $now_ms != "" } {
+                set elapsed [expr {$now_ms - $last_time_ms}]
+                # PB_CMD_user_open_output_dir_debug_log "DEDUP: elapsed=$elapsed ms"
+                if { $elapsed < 2000 } {
+                    # PB_CMD_user_open_output_dir_debug_log "DEDUP_SKIP: within 2s"
+                    set dedup_skip 1
+                }
+            }
+        }
+        if { $dedup_skip } { return }
+
+        set open_dir_native [file nativename $open_dir]
+        # PB_CMD_user_open_output_dir_debug_log "open_dir_native=$open_dir_native"
+
+        # 异步 VBS 脚本
+        if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
+            set temp_dir "C:/Temp"
+            catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
+            if { $temp_dir == "" } {
+                if { [info exists ::env(TMP)] } { set temp_dir $::env(TMP) } elseif { [info exists ::env(TEMP)] } { set temp_dir $::env(TEMP) }
+            }
+            # PB_CMD_user_open_output_dir_debug_log "temp_dir=$temp_dir"
+            set clicks "0"
+            catch { set clicks [clock clicks] }
+            set vbs_file [file nativename [file join $temp_dir "nx_focus_explorer_${clicks}.vbs"]]
+            # PB_CMD_user_open_output_dir_debug_log "vbs_file=$vbs_file"
+
+            set vbs_ok 0
+            if { [catch {
+                set escaped_target [string map [list {"} {""}] $open_dir_native]
+                # PB_CMD_user_open_output_dir_debug_log "escaped_target=$escaped_target"
+                set f [open $vbs_file w]
+                fconfigure $f -encoding cp936
+                puts $f "target = \"$escaped_target\""
+                puts $f "Set shell = CreateObject(\"Shell.Application\")"
+                puts $f "Set wshell = CreateObject(\"WScript.Shell\")"
+                puts $f "found = False"
+                puts $f "For Each window In shell.Windows()"
+                puts $f "  If InStr(LCase(window.FullName), \"explorer.exe\") > 0 Then"
+                puts $f "    On Error Resume Next"
+                puts $f "    currentPath = window.Document.Folder.Self.Path"
+                puts $f "    If Err.Number = 0 Then"
+                puts $f "      If StrComp(currentPath, target, vbTextCompare) = 0 Then"
+                puts $f "        window.Visible = True"
+                puts $f "        wshell.AppActivate window.Caption"
+                puts $f "        found = True"
+                puts $f "      End If"
+                puts $f "    End If"
+                puts $f "    On Error GoTo 0"
+                puts $f "  End If"
+                puts $f "Next"
+                puts $f "If Not found Then shell.Open(target)"
+                close $f
+                # PB_CMD_user_open_output_dir_debug_log "VBS written OK"
+                exec wscript.exe //B //Nologo "$vbs_file" &
+                # PB_CMD_user_open_output_dir_debug_log "wscript launched OK"
+                set vbs_ok 1
+            } err] } {
+                # PB_CMD_user_open_output_dir_debug_log "VBS_ERROR: $err"
+            }
+
+            if { !$vbs_ok } {
+                # PB_CMD_user_open_output_dir_debug_log "VBS_FAILED: fallback to direct explorer"
+                if { ![catch { exec explorer.exe $open_dir_native & }] } {
+                    # PB_CMD_user_open_output_dir_debug_log "explorer launched OK"
+                } else {
+                    if { ![catch { cmd.exe /c start "" $open_dir_native & }] } {
+                        # PB_CMD_user_open_output_dir_debug_log "cmd start launched OK"
+                    } else {
+                        catch { exec rundll32.exe url.dll,FileProtocolHandler $open_dir_native & }
+                        # PB_CMD_user_open_output_dir_debug_log "rundll32 fallback used"
+                    }
+                }
+            }
+            # PB_CMD_user_open_output_dir_debug_log "=== EXIT PB_CMD_user_open_output_dir ==="
+            return
+        }
+
+        # 非 Windows 回退
+        # PB_CMD_user_open_output_dir_debug_log "non-Windows fallback"
+        if { [info exists tcl_platform(os)] && [string match -nocase "Darwin" $tcl_platform(os)] } {
+            catch { exec open $open_dir_native & }
+        } else {
+            catch { exec xdg-open $open_dir_native & }
+        }
+        # PB_CMD_user_open_output_dir_debug_log "=== EXIT PB_CMD_user_open_output_dir ==="
+    }
+}
+
+
+# ==============================================================================
 # NX CAM hierarchy cache loader
 # ==============================================================================
 # The optional cache file is generated by get_cam_hierarchy_and_post.py before

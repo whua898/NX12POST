@@ -2314,134 +2314,14 @@ proc PB_CMD_smart_part_output_dir { base_dir } {
 }
 
 
-proc PB_CMD_windows_focus_or_open_folder { folder_path } {
-#=============================================================
-# Windows: 如果目标文件夹已经在资源管理器中打开，则激活该窗口；否则打开新窗口。
-# 注意：不能只做 Tcl 侧短时间去重后直接 return；用户连续后处理时仍然需要
-# 把已经打开的输出目录切到前台。
-#=============================================================
-    if { $folder_path == "" } { return }
-
-    set temp_dir ""
-    catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
-    if { $temp_dir == "" } {
-        if { [info exists ::env(TMP)] } {
-            set temp_dir $::env(TMP)
-        } elseif { [info exists ::env(TEMP)] } {
-            set temp_dir $::env(TEMP)
-        } else {
-            set temp_dir "C:/Temp"
-        }
-    }
-
-    set clicks "123456"
-    catch { set clicks [clock clicks] }
-    set focus_ps1 [file nativename [file join $temp_dir "nx_focus_output_${clicks}.ps1"]]
-    set target_path [file nativename $folder_path]
-    set target_ps [string map [list {'} {''}] $target_path]
-
-    if { [catch {
-        set f [open $focus_ps1 w]
-        set ps_ob "\173"
-        set ps_cb "\175"
-        puts $f {[Console]::OutputEncoding = [System.Text.Encoding]::UTF8}
-        puts -nonewline $f {$targetPath = '}
-        puts -nonewline $f $target_ps
-        puts $f {'}
-        puts $f "function Normalize-FolderPath(\[string\]\$path) $ps_ob"
-        puts $f {    if ([string]::IsNullOrWhiteSpace($path)) { return $null }}
-        puts $f {    try { return ([System.IO.DirectoryInfo]::new($path)).FullName.TrimEnd([char]92).ToLowerInvariant() } catch { }}
-        puts $f {    try { return [System.IO.Path]::GetFullPath($path).TrimEnd([char]92).ToLowerInvariant() } catch { return $null }}
-        puts $f $ps_cb
-        puts $f "function Path-From-LocationUrl(\[string\]\$url) $ps_ob"
-        puts $f {    if ([string]::IsNullOrWhiteSpace($url)) { return $null }}
-        puts $f {    try { if ($url.StartsWith('file:', [System.StringComparison]::OrdinalIgnoreCase)) { return ([System.Uri]$url).LocalPath } } catch { }}
-        puts $f {    return $null}
-        puts $f $ps_cb
-        puts $f {$targetPath = Normalize-FolderPath $targetPath}
-        puts $f {Add-Type @'}
-        puts $f {using System;}
-        puts $f {using System.Runtime.InteropServices;}
-        puts $f "public class Win32Focus $ps_ob"
-        puts $f {    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);}
-        puts $f {    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);}
-        puts $f $ps_cb
-        puts $f {'@}
-        puts $f {$shell = New-Object -ComObject Shell.Application}
-        puts $f {$matched = $false}
-        puts $f "foreach (\$win in \$shell.Windows()) $ps_ob"
-        puts $f "    try $ps_ob"
-        puts $f {        $paths = @()}
-        puts $f {        try { $paths += $win.Document.Folder.Self.Path } catch { }}
-        puts $f {        try { $paths += (Path-From-LocationUrl $win.LocationURL) } catch { }}
-        puts $f "        foreach (\$path in \$paths) $ps_ob"
-        puts $f "            if ((Normalize-FolderPath \$path) -eq \$targetPath) $ps_ob"
-        puts $f {            $hwnd = [IntPtr]::new([int64]$win.HWND)}
-        puts $f {            [Win32Focus]::ShowWindow($hwnd, 9) | Out-Null}
-        puts $f {            [Win32Focus]::SetForegroundWindow($hwnd) | Out-Null}
-        puts $f {            $matched = $true}
-        puts $f {            break}
-        puts $f "            $ps_cb"
-        puts $f "        $ps_cb"
-        puts $f {        if ($matched) { break }}
-        puts $f "    $ps_cb catch $ps_ob $ps_cb"
-        puts $f $ps_cb
-        puts $f {if (-not $matched -and $targetPath) { Start-Process explorer.exe -ArgumentList ('"' + $targetPath + '"') }}
-        puts $f {Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue}
-        close $f
-        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $focus_ps1 &
-    } err] } {
-        catch { exec explorer.exe $target_path & }
-    }
-}
-
-
 proc PB_CMD_open_smart_nc_output_dir { } {
 #=============================================================
-# 后处理完成后只打开一次总输出目录（部件名目录）。
-# 批量后处理多个一级组时，后续 MOM_end_of_program 不再重复弹 Explorer。
+# 后处理完成后打开总输出目录（部件名目录）。
+# 实际逻辑在 smart_post_user.tcl 的 PB_CMD_user_open_output_dir 中，
+# 避免 Post Builder 覆盖。
 #=============================================================
-    global my_out_dir tcl_platform
-
-    set open_dir ""
-    if { [info exists my_out_dir] && $my_out_dir != "" } {
-        catch { set open_dir [file normalize $my_out_dir] }
-    }
-
-    if { $open_dir == "" || ![file isdirectory $open_dir] } { return }
-
-    set open_dir_native [file nativename $open_dir]
-    set open_dir_key ""
-    catch { set open_dir_key [string tolower [file normalize $open_dir_native]] }
-    if { $open_dir_key == "" } { set open_dir_key [string tolower $open_dir_native] }
-
-    # 若 Python Journal 执行批量后处理，会告诉后处理器当前是第几个/总几个。
-    # 这时只允许最后一个对象结束时打开/切换目录；直接 NX 原生后处理没有这些变量。
-    set batch_index 0
-    set batch_total 0
-    if { [info exists ::env(NX_SMART_POST_BATCH_INDEX)] } {
-        catch { scan $::env(NX_SMART_POST_BATCH_INDEX) "%d" batch_index }
-    }
-    if { [info exists ::env(NX_SMART_POST_BATCH_TOTAL)] } {
-        catch { scan $::env(NX_SMART_POST_BATCH_TOTAL) "%d" batch_total }
-    }
-    if { $batch_total > 1 && $batch_index > 0 && $batch_index < $batch_total } {
-        return
-    }
-
-    # 记录最近一次目录，但不要因为命中记录就 return。
-    # 已打开目录应切换到现有 Explorer 窗口；是否新开窗口由 Windows helper 判断。
-    set now_ms 0
-    catch { set now_ms [expr {[clock seconds] * 1000}] }
-    set ::env(NX_SMART_POST_OPENED_OUTPUT_DIR) $open_dir_key
-    set ::env(NX_SMART_POST_OPENED_OUTPUT_TIME_MS) $now_ms
-
-    if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
-        catch { PB_CMD_windows_focus_or_open_folder $open_dir_native }
-    } elseif { [info exists tcl_platform(os)] && [string match -nocase "Darwin" $tcl_platform(os)] } {
-        catch { exec open $open_dir_native & }
-    } else {
-        catch { exec xdg-open $open_dir_native & }
+    if { [llength [info commands PB_CMD_user_open_output_dir]] } {
+        PB_CMD_user_open_output_dir
     }
 }
 
@@ -4355,11 +4235,11 @@ proc PB_CMD_smart_file_switch { } {
     set effective_depth [expr {$stack_len - $effective_base}]
 
     if { [PB_CMD_is_cam_root_parent $op_parent] } {
-        # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为工序名
+        # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为 工序名_刀具名
         set parent_dir ""
         set file_target "${mom_operation_name}_${safe_tool_name}"
     } elseif { $effective_depth <= 1 } {
-        # 有效 Level 1: 当前有效组内直接工序 -> 管理组路径/有效组/工序.nc
+        # 有效 Level 1: 当前有效组内直接工序 -> 管理组路径/有效组/工序名_刀具名.nc
         set parent_dir ""
         foreach path_group [lrange $route_stack 0 end] {
             if { $parent_dir == "" } {
@@ -4370,7 +4250,7 @@ proc PB_CMD_smart_file_switch { } {
         }
         set file_target "${mom_operation_name}_${safe_tool_name}"
     } else {
-        # 有效 Level 2+: 当前有效组的子组 -> 管理组路径/有效组/子组_刀具.nc，合并子组内工序
+        # 有效 Level 2+: 当前有效组的子组 -> 管理组路径/有效组/二级组名_刀具名.nc，合并子组内工序
         set parent_dir ""
         foreach path_group [lrange $route_stack 0 $effective_base] {
             if { $parent_dir == "" } {
