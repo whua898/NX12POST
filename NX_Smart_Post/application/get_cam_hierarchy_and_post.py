@@ -177,6 +177,69 @@ def _script_directory():
         return os.getcwd()
 
 
+def _ensure_men_files_gbk_ansi(log):
+    """确保 NX MenuScript 文件 (.men/.rtb) 为 GBK(ANSI)+CRLF+无BOM 编码。
+
+    NX 要求这些文件必须是 ANSI(GBK) 编码，UTF-8 存储会导致中文菜单乱码。
+    本函数在每次 Journal 运行时检测并自动修正，保证进入 NX 后菜单正常显示。
+    """
+    script_dir = _script_directory()
+    startup_dir = os.path.normpath(os.path.join(script_dir, "..", "startup"))
+    target_names = ("smart_post.men", "smart_post.rtb")
+    utf8_bom = b"\xef\xbb\xbf"
+
+    for name in target_names:
+        path = os.path.join(startup_dir, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as stream:
+                data = stream.read()
+        except Exception as exc:
+            log.write("Skip {0}: cannot read ({1})".format(name, _safe_name(exc)))
+            continue
+
+        # 已是 GBK(ANSI)、无 UTF-8 BOM、且非纯 ASCII 时能按 GBK 解码 -> 跳过
+        if data[:3] == utf8_bom:
+            needs_fix = True
+        else:
+            try:
+                data.decode("gbk")
+                # 若能按 gbk 解码，视为已正确；但需排除“恰好也是合法 gbk 的纯 ASCII/UTF-8”情况：
+                # 若同时能按 utf-8 解码且包含非 ASCII，说明可能是 UTF-8 误存，需要转 GBK。
+                try:
+                    data.decode("utf-8")
+                    has_non_ascii = any(b > 127 for b in data)
+                    needs_fix = has_non_ascii  # UTF-8 可解码且含中文 -> 实为 UTF-8，需转 GBK
+                except Exception:
+                    needs_fix = False  # 只能 gbk 解，已是 ANSI
+            except Exception:
+                needs_fix = True  # gbk 解不了，需尝试修复
+
+        if not needs_fix:
+            continue
+
+        # 尝试修复：优先按 utf-8 解码（HEAD 版是正确 UTF-8 中文），再编码为 GBK+CRLF
+        text = None
+        for enc in ("utf-8", "utf-8-sig", "cp936", "gbk", "mbcs", "latin1"):
+            try:
+                text = data.decode(enc)
+                break
+            except Exception:
+                pass
+        if text is None:
+            log.write("Skip {0}: cannot decode for repair".format(name))
+            continue
+
+        new_data = text.replace("\r\n", "\n").replace("\n", "\r\n").encode("gbk")
+        try:
+            with open(path, "wb") as stream:
+                stream.write(new_data)
+            log.write("Fixed encoding of {0} -> GBK(ANSI)+CRLF".format(name))
+        except Exception as exc:
+            log.write("Failed to rewrite {0}: {1}".format(name, _safe_name(exc)))
+
+
 def _candidate_post_dirs(session, work_part, output_dir, log):
     script_dir = _script_directory()
     plugin_root = os.path.dirname(script_dir)
@@ -838,6 +901,10 @@ def main():
     output_dir = _part_directory(work_part)
     log = Logger(os.path.join(output_dir, LOG_NAME))
     log.section("NX Smart Post Journal")
+
+    # 进入 NX 运行 Journal 时，自动确保 MenuScript 文件为 GBK(ANSI) 编码，
+    # 避免中文菜单因 UTF-8 存储而乱码。
+    _ensure_men_files_gbk_ansi(log)
 
     setup = work_part.CAMSetup
     if setup is None:
