@@ -2235,6 +2235,31 @@ proc PB_CMD_remember_cleanup_file { cleanup_file } {
         lappend my_cleanup_files [file nativename "[file rootname $cleanup_norm].nc"]
     }
 }
+# ============================================================
+proc PB_CMD_sanitize_file_component { value fallback } {
+# ============================================================
+# Unified file/folder name sanitizer:
+#   1. trim leading/trailing spaces
+#   2. fall back to fallback if empty, return "NC_OUTPUT" otherwise
+#   3. replace Windows illegal chars / \ : * ? " < > | with _
+#   4. remove control chars and anything outside [A-Za-z0-9_\-\u4e00-\u9fa5 ]
+#   5. convert remaining spaces to _
+#   6. strip trailing dots/spaces, truncate to 255 chars
+# ============================================================
+    set clean_name [string trim $value]
+    if { $clean_name eq "" } { set clean_name [string trim $fallback] }
+    if { $clean_name eq "" } { return "NC_OUTPUT" }
+    set clean_name [string map {"/" "_" "\\" "_" ":" "_" "*" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"} $clean_name]
+    regsub -all {[^a-zA-Z0-9_\-\u4e00-\u9fa5 ]} $clean_name "" clean_name
+    set clean_name [string map {" " "_"} $clean_name]
+    set clean_name [string trimright $clean_name ". "]
+    if { [string length $clean_name] > 255 } {
+        set clean_name [string range $clean_name 0 254]
+    }
+    return $clean_name
+}
+
+
 
 
 proc PB_CMD_smart_safe_folder_name { raw_name fallback_name } {
@@ -3708,7 +3733,7 @@ proc PB_CMD_program_header { } {
     set mom_my_stock_p $stock_p
     set mom_my_stock_f $stock_f
 
-    # 进阶建议一：程序头增加“Z轴最低深度”预估
+    # 进阶建议一：程序头增加"Z轴最低深度"预估
     global mom_z_min
     set z_min [expr {[info exists mom_z_min] ? $mom_z_min : 0.0}]
     set mom_my_z_min [format "%.3f" $z_min]
@@ -3843,21 +3868,17 @@ return
                        "${::mom_output_file_directory}sub_program.out"
 }
 
-
+
 #=============================================================
 proc PB_CMD_sanitize_filename { } {
 #=============================================================
-# 清理文件名，移除非法字符
-# 使用前需设置全局变量: my_temp_filename
+# Clean file name, remove illegal characters.
+# Delegates to PB_CMD_sanitize_file_component (the unified helper).
+# Required global variable: my_temp_filename
 #=============================================================
     global my_temp_filename my_temp_clean_filename
-    # 替换空格为下划线
-    set clean [string map {" " "_" ":" "_" "/" "_"} $my_temp_filename]
-    # 移除非字母数字字符（保留中文、下划线、连字符）
-    regsub -all {[^a-zA-Z0-9_\-\u4e00-\u9fa5]} $clean "" clean
-    set my_temp_clean_filename $clean
+    set my_temp_clean_filename [PB_CMD_sanitize_file_component $my_temp_filename "NC_OUTPUT"]
 }
-
 
 #=============================================================
 proc PB_CMD_set_csys { } {
@@ -4109,7 +4130,7 @@ proc PB_CMD_smart_file_switch { } {
         }
     }
 
-    # 不再按组名格式猜层级。形如 XMBL-BOT-05 的三级组也会带“-数字”，
+    # 不再按组名格式猜层级。形如 XMBL-BOT-05 的三级组也会带"-数字"，
     # 层级只来自当前组栈、mom_parent_group_name 和 my_group_level_map。
     if { $op_grandparent == "" || $op_grandparent == $op_parent } {
         set op_grandparent "NC_PROGRAM"
@@ -4140,7 +4161,7 @@ proc PB_CMD_smart_file_switch { } {
             }
         }
     }
-    # 如果当前子组事件只给了“二级/三级”局部栈，尝试用之前已输出过的
+    # 如果当前子组事件只给了"二级/三级"局部栈，尝试用之前已输出过的
     # 组目录前缀补回更外层管理路径，例如 XMZL-BOT -> 淬火前/XMZL-BOT。
     if { [llength $route_stack] > 0 } {
         set first_route_group [lindex $route_stack 0]
@@ -4203,46 +4224,46 @@ proc PB_CMD_smart_file_switch { } {
     set parent_dir ""
     set my_is_merged_op 0
 
-    set safe_tool_name “”
+    set safe_tool_name ""
     if { [info exists mom_tool_name] } {
-        set safe_tool_name [string map [list “ “ “_” “/” “_” “\\” “_” “*” “_” “:” “_” “?” “_” “<” “_” “>” “_” “|” “_” “\”” “_”] $mom_tool_name]
+        set safe_tool_name [string map [list " " "_" "/" "_" "\\" "_" "*" "_" ":" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"] $mom_tool_name]
     }
 
     # NC 文件名模式，默认保持既有行为：工序名_刀具名 / 二级组名_刀具名。
     # 可通过 Tcl 全局变量 my_nc_filename_mode 或环境变量 NX_SMART_POST_FILENAME_MODE 覆盖：
     # operation_tool / operation / operation_tool_number / operation_h_register
     global my_nc_filename_mode mom_tool_number mom_tool_adjust_register mom_tool_length_adjust_register
-    set filename_mode “operation_tool”
-    if { [info exists my_nc_filename_mode] && $my_nc_filename_mode != “” } {
+    set filename_mode "operation_tool"
+    if { [info exists my_nc_filename_mode] && $my_nc_filename_mode != "" } {
         set filename_mode $my_nc_filename_mode
     }
-    if { [info exists ::env(NX_SMART_POST_FILENAME_MODE)] && $::env(NX_SMART_POST_FILENAME_MODE) != “” } {
+    if { [info exists ::env(NX_SMART_POST_FILENAME_MODE)] && $::env(NX_SMART_POST_FILENAME_MODE) != "" } {
         set filename_mode $::env(NX_SMART_POST_FILENAME_MODE)
     }
-    set filename_suffix “”
-    if { [string match -nocase “operation” $filename_mode] } {
-        set filename_suffix “”
-    } elseif { [string match -nocase “operation_tool_number” $filename_mode] } {
-        if { [info exists mom_tool_number] && $mom_tool_number != “” } {
-            set filename_suffix “_T$mom_tool_number”
-        } elseif { $safe_tool_name != “” } {
-            set filename_suffix “_$safe_tool_name”
+    set filename_suffix ""
+    if { [string match -nocase "operation" $filename_mode] } {
+        set filename_suffix ""
+    } elseif { [string match -nocase "operation_tool_number" $filename_mode] } {
+        if { [info exists mom_tool_number] && $mom_tool_number != "" } {
+            set filename_suffix "_T$mom_tool_number"
+        } elseif { $safe_tool_name != "" } {
+            set filename_suffix "_$safe_tool_name"
         }
-    } elseif { [string match -nocase “operation_h_register” $filename_mode] } {
-        if { [info exists mom_tool_adjust_register] && $mom_tool_adjust_register != “” } {
-            set filename_suffix “_H$mom_tool_adjust_register”
-        } elseif { [info exists mom_tool_length_adjust_register] && $mom_tool_length_adjust_register != “” } {
-            set filename_suffix “_H$mom_tool_length_adjust_register”
-        } elseif { $safe_tool_name != “” } {
-            set filename_suffix “_$safe_tool_name”
+    } elseif { [string match -nocase "operation_h_register" $filename_mode] } {
+        if { [info exists mom_tool_adjust_register] && $mom_tool_adjust_register != "" } {
+            set filename_suffix "_H$mom_tool_adjust_register"
+        } elseif { [info exists mom_tool_length_adjust_register] && $mom_tool_length_adjust_register != "" } {
+            set filename_suffix "_H$mom_tool_length_adjust_register"
+        } elseif { $safe_tool_name != "" } {
+            set filename_suffix "_$safe_tool_name"
         }
     } else {
-        if { $safe_tool_name != “” } {
-            set filename_suffix “_$safe_tool_name”
+        if { $safe_tool_name != "" } {
+            set filename_suffix "_$safe_tool_name"
         }
     }
 
-    # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为”管理组”。
+    # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为"管理组"。
     if { ![PB_CMD_is_cam_root_parent $op_parent] } {
         set my_group_has_direct_ops($op_parent) 1
         if { [llength $route_stack] > 0 } {
@@ -4251,7 +4272,7 @@ proc PB_CMD_smart_file_switch { } {
     }
 
     # 有限剥离管理组：最多向下跳过 3 层没有直接工序的管理组，不无限递归。
-    # 剥离后的第 1 层按原“一级组”处理；第 2 层按原“二级组合并 NC”处理。
+    # 剥离后的第 1 层按原"一级组"处理；第 2 层按原"二级组合并 NC"处理。
     set effective_base 0
     set max_manager_depth 10
     if { [info exists my_max_manager_group_depth] && $my_max_manager_group_depth != "" } {
@@ -4301,7 +4322,7 @@ proc PB_CMD_smart_file_switch { } {
 # 3.5 无刀库机床安全检查：二级程序组内刀具一致性校验（增强版）
 # ==========================================================
 # 说明：针对无刀库机床（刀具号默认为0）的特殊情况，
-# 采用“刀具名称+类型+直径+下半径+总长”构建指纹进行比对，
+# 采用"刀具名称+类型+直径+下半径+总长"构建指纹进行比对，
 # 避免仅凭刀号判断导致的误报或失效。
 # ==========================================================
 
@@ -4320,7 +4341,7 @@ proc PB_CMD_smart_file_switch { } {
       if { [info exists mom_tool_corner1_radius] } { set current_tool_corner  $mom_tool_corner1_radius }
       if { [info exists mom_tool_length] }    { set current_tool_length  $mom_tool_length }
 
-      # 2. 构建当前刀具的“唯一指纹”字符串
+      # 2. 构建当前刀具的"唯一指纹"字符串
       # 格式示例：EM_12_R1_MILL|12.000|1.000|50.000
       set current_tool_fingerprint "${current_tool_name}|${current_tool_type}|${current_tool_dia}|${current_tool_corner}|${current_tool_length}"
 
@@ -4371,7 +4392,7 @@ proc PB_CMD_smart_file_switch { } {
     if { $parent_dir == "" } {
         set target_folder_path $my_out_dir
     } else {
-        # parent_dir 可能是“一级/二级”的嵌套路径。逐段清洗，保留目录层级。
+        # parent_dir 可能是"一级/二级"的嵌套路径。逐段清洗，保留目录层级。
         set target_folder_path $my_out_dir
         foreach folder_part [split [string map [list "\\" "/"] $parent_dir] "/"] {
             if { $folder_part == "" } { continue }
@@ -5769,7 +5790,7 @@ proc CLOSE_files { } {
    catch { unset my_cleanup_files }
 
    # NX 信息窗口可能会短时间占用原始组合输出文件。
-   # 勾选“列出输出”时保守等待 10 秒；未勾选时默认只等 1 秒，减少临时汇总 NC 可见时间。
+   # 勾选"列出输出"时保守等待 10 秒；未勾选时默认只等 1 秒，减少临时汇总 NC 可见时间。
    # 如需手动覆盖，可预先设置 my_cleanup_delay_ms。
    global my_cleanup_delay_ms mom_sys_list_output
    set cleanup_list_output "OFF"
