@@ -3868,7 +3868,7 @@ return
                        "${::mom_output_file_directory}sub_program.out"
 }
 
-
+
 #=============================================================
 proc PB_CMD_sanitize_filename { } {
 #=============================================================
@@ -4086,6 +4086,7 @@ proc PB_CMD_smart_file_switch { } {
     global my_is_merged_op
     global my_current_merged_group my_current_merged_tool my_skip_current_merged_group
     global my_has_groups
+    global my_group_base_tool
 
     # 移除 my_has_groups 的限制，确保即使没有触发组事件的顶层或扁平工序也能够被正常分流和输出
     set my_is_merged_op 0
@@ -4311,6 +4312,33 @@ proc PB_CMD_smart_file_switch { } {
         set file_target "[lindex $route_stack [expr {$effective_base + 1}]]${filename_suffix}"
         set my_is_merged_op 1
     }
+
+    # === NX native fallback: use group file name when depth unknown ===
+    # When nx_cam_parent cache is unavailable (native NX post), depth
+    # cannot be determined reliably. Fall back to "same parent = merge"
+    # strategy: all operations under same parent write to group-named file.
+    if { !([info exists nx_cam_parent] && [array exists nx_cam_parent]) \
+         && !$my_is_merged_op && $op_parent ne "NC_PROGRAM" && $op_parent ne "NONE" \
+         && $op_parent ne "" } {
+        set _fb_tool $safe_tool_name
+        if { $_fb_tool eq "" && [info exists mom_tool_name] } { set _fb_tool $mom_tool_name }
+        if { [info exists my_group_base_tool($op_parent)] } {
+            if { $my_group_base_tool($op_parent) eq $_fb_tool } {
+                # Same tool → merge to group file
+                set my_is_merged_op 1
+                set file_target "${op_parent}${filename_suffix}"
+            } else {
+                # Different tool → warn AND fall back to individual (no change to file_target)
+                catch { MOM_output_literal "(WARNING: Tool mismatch in $op_parent: base=$my_group_base_tool($op_parent) current=$_fb_tool - output as individual)" }
+            }
+        } else {
+            # First op under this parent: record tool and merge
+            set my_group_base_tool($op_parent) $_fb_tool
+            set my_is_merged_op 1
+            set file_target "${op_parent}${filename_suffix}"
+        }
+    }
+    # === END fallback ===
 
 # ==========================================================
 # 3.5 无刀库机床安全检查：二级程序组内刀具一致性校验（增强版）
