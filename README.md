@@ -239,10 +239,39 @@ NX12 实机复测重点：
 
 ### 修改后 NX 没生效
 
-NX 可能缓存后处理 Tcl。修改 `.tcl` 后，建议重启 NX 再测试。
+NX **不会缓存**后处理 Tcl，修改 `.tcl` 并通过 `copy_to_nx_smart_post.bat` 同步后，下一次后处理立即生效，不需重启 NX。
+
+如果仍未生效，请检查：
+
+- `copy_to_nx_smart_post.bat` 是否真的复制到了两处目标目录。
+- 项目根与 `E:\Siemens\NX 12.0\MACH\resource\postprocessor\` 的 `smart_post.tcl`、`smart_post_user.tcl` 字节数是否一致。
+- Tcl 语法是否完整（用 `tclsh` 加载后不应出现 `char map list unbalanced` 之类的错误）。
+
+### Tcl 解析常见错误：`char map list unbalanced`
+
+通常原因：`string map [list ...]` 中的引号被保存成了 UTF-8 智能引号 (`"` `"`，每个 3 字节) 而不是 ASCII `"`。Tcl 把整个智能引号序列当成一个 token，导致 list 变成奇数。
+
+排查：打开 `smart_post.tcl`，查找 `[list "` 对应的配对引号，确认都是 ASCII 双引号（1 字节）。
 
 ## 常见错误码
 
 - `1745006`：Invalid block template name，通常是 `MOM_do_template` 调用了不存在的模板。
 - `1745007`：Invalid expression in block template，通常是 DEF 中 Text 表达式错误。
 - `1770002`：Tcl interpreter error，通常是 Tcl 运行错误的通用包装。
+- `1770006`：Tcl 调用被 `MOM_abort` 中止，常见起因是路由失败、`string map` 列表配对错误 (例如智能引号)、或二级组混刀 (当 `NX_SMART_POST_ABORT_ON_TOOL_MISMATCH=1`)。
+
+## 验收矩阵（每次改动后跑一遍）
+
+| 场景 | 选择对象 | 列出输出 | 临时文件 | 自动打开目录 |
+| --- | --- | --- | --- | --- |
+| A | `NC_PROGRAM` | 一级组目录 + 二级组合并 NC | 10 秒后清理 ("列出输出" ON) 或 1 秒后 (OFF) | 打开一次 |
+| B | 单个一级组 | 只输出该组 | 同上 | 打开一次 |
+| C | 二级组 | 单个合并 NC | 同上 | 打开一次 |
+| D | 单工序 | 单个 NC | 同上 | 打开一次 |
+| E | 多层管理组 | 管理组作为目录层级保留 | 同上 | 打开一次 |
+| F | 勾选 "列出输出" | 与 A-E 相同 | 10 秒后清理 + NX 信息窗口能看到 NC | 打开一次 |
+| G | 不勾选 "列出输出" | 与 A-E 相同 | 1 秒后清理 | 打开一次 |
+| H | 自动 Journal 入口 | 同 A-E | 同 | 打开一次 |
+| I | NX 原生后处理入口 (`menu → Postprocess`) | 按模板原始行为，**不启用**智能路由/拆分/合并 | — | — |
+
+改动任何代码后，至少跑 A + D + C 这 3 个基础场景，确认输出目录结构、文件名、清理日志均符合预期。
