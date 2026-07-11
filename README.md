@@ -43,12 +43,21 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
 
 ## CAM 层级输出规则
 
+当前正式文件名规则：**真实 NC 文件名默认带刀具名后缀**，格式为 `工序名_刀具名.nc` 或 `二级组名_刀具名.nc`。这样可以让无刀库机床操作者从文件名直接识别本文件对应刀具，降低误装刀风险。若现场需要简化命名，可通过 `my_nc_filename_mode` 或 `NX_SMART_POST_FILENAME_MODE` 切换命名策略。
+
 - 选中 `NC_PROGRAM`：一级组生成文件夹；一级组下独立工序单独输出；二级组输出单一合并 NC。
 - 选中一级组：只输出该组下的独立工序和二级组合并 NC。
 - 选中单工序：输出到所属一级组目录，文件名为 `工序名_刀具名.nc`。
 - 选中二级组：输出到所属一级组目录，文件名为 `二级组名_刀具名.nc`，组内工序合并。
 - 多层管理组会保留为目录层级，但不会强制把一级组整体合并成一个 NC。
 - 不默认生成“每个一级程序组一个合并 NC 文件”。
+
+| 用户选择 | 输出目录 | 输出文件名 | 合并规则 |
+| --- | --- | --- | --- |
+| `NC_PROGRAM` | `部件名/一级组/`，多层管理组会作为中间目录保留 | 一级组下独立工序输出 `工序名_刀具名.nc`；二级组输出 `二级组名_刀具名.nc` | 只合并二级组内工序，不生成一级组总合并 NC |
+| 一级组 | `部件名/一级组/` | 该一级组下独立工序输出 `工序名_刀具名.nc`；二级组输出 `二级组名_刀具名.nc` | 只合并二级组内工序 |
+| 单工序 | `部件名/所属一级组/` | `工序名_刀具名.nc` | 不合并，只输出当前工序 |
+| 二级组 | `部件名/所属一级组/` | `二级组名_刀具名.nc` | 合并该二级组内工序，并进行刀具一致性检查 |
 
 示例：
 
@@ -105,6 +114,15 @@ NX “列出输出/信息窗口”显示 NC 代码时，关键依赖主 `ptp_fil
 
 不要把这条链路改成“只有勾选列出输出才维护”，也不要试图用 `.lpt` 追加内容替代主 NC 预览文件。
 
+### 临时文件正常现象
+
+| 现象 | 是否正常 | 原因 | 后续处理 |
+| --- | --- | --- | --- |
+| 部件名同名 `.nc` 短暂出现在部件目录或输出目录 | 正常 | 这是 NX 主 `ptp_file_name` 对应的临时汇总 NC/预览文件，供“列出输出/信息窗口”读取 NC 代码 | 后处理结束后由后台清理脚本延迟删除 |
+| 同名 `.ptp` 短暂出现 | 正常 | NX/Post Builder 可能生成与主输出相关的同名预览文件 | 与临时 `.nc` 一起纳入延迟清理 |
+| `.lpt` 短暂出现 | 正常 | `.lpt` 是 listing/commentary 报告文件，不是 NC 代码显示的根来源 | 勾选“列出输出”时通常等待更久再清理 |
+| `%TEMP%/nx_cleanup_latest.log` 出现清理记录 | 正常 | 后台清理脚本会记录计划、延迟和删除结果 | 若文件未删除，可通过该日志判断是否被 NX 或杀软占用 |
+
 ## 清理策略
 
 - 勾选“列出输出”：默认等待 `10000 ms` 后清理，保证 NX 有时间读取临时汇总 NC。
@@ -114,6 +132,7 @@ NX “列出输出/信息窗口”显示 NC 代码时，关键依赖主 `ptp_fil
 - `.cmd` 内部对目标文件做重试删除；`.lpt` 重试次数较少，`.nc/.ptp` 更保守。
 - Unix/Linux 下使用后台 `sh -c` 延迟 `rm -f`。
 - 清理日志：`%TEMP%/nx_cleanup_latest.log`。
+- 排障时可通过 Tcl 全局变量 `my_disable_temp_preview_cleanup=1` 或环境变量 `NX_SMART_POST_KEEP_TEMP=1` 暂停临时预览文件清理。
 
 成功日志常见片段：
 
@@ -131,6 +150,18 @@ DELETED_OR_NOT_EXIST: ...部件名.nc
 - 短时间去重：环境变量 `NX_SMART_POST_OPENED_OUTPUT_DIR` + 时间戳记录最近一次打开的目录，2 秒内不重复打开。
 - Windows 下后台执行 VBS 脚本（`wscript.exe //B //Nologo`），检测已有 Explorer 窗口，有则激活（`AppActivate`），无则打开新窗口（`Shell.Open`）。VBS 文件以 GBK 编码写入，确保中文路径正确。
 - VBS 脚本失败时回退到直接 `exec explorer.exe &`。
+- 如需静默后处理，可通过 Tcl 全局变量 `my_auto_open_output_dir=0` 或环境变量 `NX_SMART_POST_AUTO_OPEN_DIR=0` 关闭自动打开目录。
+
+## 可选功能开关
+
+以下开关默认不改变既有行为，只在现场有特殊需求或排障时启用：
+
+| 开关 | 类型 | 默认值 | 可选值 / 用法 | 作用 |
+| --- | --- | --- | --- | --- |
+| `my_nc_filename_mode` / `NX_SMART_POST_FILENAME_MODE` | Tcl 全局变量 / 环境变量 | `operation_tool` | `operation_tool`、`operation`、`operation_tool_number`、`operation_h_register` | 控制真实 NC 文件名后缀；默认仍为 `工序名_刀具名.nc` / `二级组名_刀具名.nc` |
+| `my_abort_on_merged_group_tool_mismatch` / `NX_SMART_POST_ABORT_ON_TOOL_MISMATCH` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 二级组合并时若检测到刀具指纹不一致，默认只输出警告；启用后立即中止后处理 |
+| `my_disable_temp_preview_cleanup` / `NX_SMART_POST_KEEP_TEMP` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 排障时保留临时汇总 `.nc`、同名 `.ptp` 和 `.lpt`，不启动后台清理 |
+| `my_auto_open_output_dir` / `NX_SMART_POST_AUTO_OPEN_DIR` | Tcl 全局变量 / 环境变量 | `1` | `0`、`off`、`false`、`no` 关闭 | 静默后处理时禁止自动打开/聚焦输出目录 |
 
 ## 调试
 

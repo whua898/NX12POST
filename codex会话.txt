@@ -1,0 +1,1848 @@
+分析研究本项目
+复制
+项目总体定位
+这是一个 Siemens NX 12.0.2.x 三轴铣智能后处理项目，目标机床是 无刀库机床。项目核心不是单纯生成一个 .nc，而是通过 Python Journal + Tcl 后处理器协作，实现：
+
+读取 NX CAM 程序顺序树。
+
+按 CAM 层级拆分/合并输出 NC。
+
+保留 NX “列出输出/信息窗口”中的 NC 代码预览。
+
+输出完成后自动打开/聚焦输出目录。
+
+延迟清理 NX 主输出链路产生的临时 .nc/.ptp/.lpt 文件。README 对这个定位和职责有明确描述。
+
+我本次只是分析项目，没有修改文件，因此没有提交 commit，也没有创建 PR。
+
+关键文件与职责
+1. smart_post.tcl / smart_post.tcl.tex
+当前正式后处理器逻辑是 smart_post.tcl / smart_post.tcl.tex，README 明确把它列为正式后处理器逻辑文件。
+
+从代码看，smart_post.tcl承担这些关键职责：
+
+Hook NX/Post Builder 的 MOM 事件。
+
+在每个工序开始前切换目标 NC 文件。
+
+写程序头、程序尾。
+
+维护临时主输出文件镜像链路。
+
+在 MOM_end_of_program 中统一收尾、清理、打开输出目录。
+
+2. NX_Smart_Post/application/get_cam_hierarchy_and_post.py
+这是 NX Journal 自动后处理入口。README 明确说明它负责读取/缓存 CAM 层级并发起后处理。
+
+代码顶部定义了默认后处理器、缓存文件名、日志名和输出扩展名：
+
+默认后处理器：smart_post
+
+层级缓存：nx_cam_hierarchy.tcl
+
+Journal 日志：nx_smart_post_journal.log
+
+输出扩展：.nc
+
+3. smart_post_user.tcl
+这是用户扩展入口之一，并且承担两个非常重要的“不会被 Post Builder 覆盖”的功能：
+
+打开/聚焦输出目录。
+
+加载 Python Journal 生成的 CAM 层级缓存。
+
+4. 1111.tcl、Original/、ugpost_base.tcl
+这些是稳定基线/备份或只读参考，不应随意修改。README 中也明确 1111.tcl 是稳定参考基线，Original/ 是原始备份。
+
+整体运行流程
+项目运行链路可以概括为：
+
+用户在 NX 中打开包含 CAM 的部件。
+
+用户选中 NC_PROGRAM、一级组、二级组或单工序。
+
+执行 Python Journal：get_cam_hierarchy_and_post.py。
+
+Journal 读取当前选择对象；没有选择时回退到程序根。
+
+Journal 遍历 CAM 程序组树，生成 nx_cam_hierarchy.tcl。
+
+Journal 设置环境变量，让 Tcl 后处理器知道本次缓存有效。
+
+Journal 调用 smart_post 后处理器。
+
+Tcl 根据缓存或 MOM 事件维护组层级。
+
+Tcl 按层级拆分/合并 NC 文件。
+
+后处理结束后，Tcl 打开输出目录并延迟清理临时预览文件。README 对这个流程有完整说明。
+
+Python Journal 设计分析
+默认后处理器解析
+Journal 默认使用：
+
+DEFAULT_POST_NAME = "smart_post"
+POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
+也就是说正式默认后处理器是 smart_post，但可以通过环境变量 NX_SMART_POST_NAME 临时覆盖。
+
+README 也强调后续更换后处理器时，优先改 DEFAULT_POST_NAME，临时测试可用环境变量覆盖。
+
+编码兼容性
+Python 端对文本、bytes、中文路径做了较多防御：
+
+_to_text() 会尝试 utf-8、mbcs、cp936、gbk 等编码。
+
+_utf8_hex() 用于把部件名编码成 UTF-8 hex，供 Tcl 端稳定还原中文部件名。
+
+_write_text_file() 统一 UTF-8 写文件。
+
+这对 NX12 + 中文 Windows 环境很重要。
+
+NX 菜单文件编码自修复
+Journal 每次运行时会检查 smart_post.men、smart_post.rtb 是否为 GBK/ANSI + CRLF + 无 BOM。代码注释说明 NX MenuScript 文件若用 UTF-8 存储会导致中文菜单乱码。
+
+这说明项目已经把 NX12 中文菜单兼容问题纳入自动修复流程。
+
+CAM 根对象与选择对象处理
+Journal 的 _choose_target() 会优先读取当前选择对象；如果没有选择，则回退到程序根。
+
+程序根解析做得比较保守：它会尝试多种 NXOpen API 名称，例如 GetRootProgramGroup、GetRootCAMGroup、GetProgramRoot、GetRootGroup 等，并且会从多个 collection 中补充 root 候选。
+
+这体现了项目对 NXOpen 版本差异的兼容设计。
+
+层级缓存生成
+Journal 使用 _walk() 遍历目标 CAM 树，并记录：
+
+tag
+
+name
+
+parent
+
+depth
+
+path
+
+type
+
+object 引用
+
+随后 _write_hierarchy_cache() 写出 Tcl 可直接 source 的数组，包括：
+
+nx_cam_parent
+
+nx_cam_path
+
+nx_cam_type
+
+nx_cam_depth
+
+nx_cam_selected_root
+
+Postprocess API 兼容
+Journal 尝试多个 NXOpen 后处理 API 名称：
+
+Postprocess
+
+PostProcess
+
+PostprocessWithSetting
+
+同时尝试带单位枚举和不带单位枚举、目标对象列表和单对象等多种参数组合。
+
+这是典型的 NX12/NXOpen 兼容性写法。
+
+批量后处理控制
+当没有单一程序根、需要多个根对象逐个后处理时，Journal 会设置：
+
+NX_SMART_POST_BATCH_TOTAL
+
+NX_SMART_POST_BATCH_INDEX
+
+并且直到批量完成后才清除，确保 Tcl 端只在最后一次打开输出目录。
+
+主入口
+main() 的主流程非常清晰：
+
+获取 NX session 和 work part。
+
+创建日志。
+
+修复菜单编码。
+
+获取 CAM setup。
+
+选择目标 CAM 对象。
+
+写出层级缓存。
+
+设置部件名环境变量。
+
+设置 NX_SMART_POST_USE_CACHE=1。
+
+解析后处理器。
+
+调用后处理。
+
+Tcl 后处理器设计分析
+Hook MOM 事件
+smart_post.tcl 在初始化阶段 Hook 了 MOM_start_of_group、MOM_end_of_group 和 MOM_start_of_path。
+
+它会先把原始命令 rename 成 *_orig，再定义同名 wrapper，这样可以插入智能逻辑，同时保留原始后处理器行为。
+
+特别关键的是 MOM_start_of_path：
+
+先执行 PB_CMD_smart_file_switch。
+
+文件切换失败则 abort，避免继续写入错误文件。
+
+按需写入程序头。
+
+二级组合并时输出工序分隔注释。
+
+最后调用 MOM_start_of_path_orig，保留机床状态和刀具初始化。
+
+这就是“智能路由”插入点。
+
+层级缓存加载
+smart_post_user.tcl 中的 PB_CMD_user_load_cam_hierarchy_cache 负责加载 Python 生成的 nx_cam_hierarchy.tcl。它只在环境变量 NX_SMART_POST_USE_CACHE=1 时读取缓存，避免普通 NX 后处理误读历史旧缓存。
+
+加载成功后，它把 nx_cam_parent 映射到 my_group_level_map，供 Tcl 路由逻辑使用。
+
+这个设计很好地分离了两种入口：
+
+Python Journal 自动后处理：使用刚生成的缓存。
+
+NX 原生后处理：不读旧缓存，靠 MOM group 事件实时维护。
+
+输出目录打开/聚焦
+PB_CMD_user_open_output_dir 会根据 my_out_dir 打开输出目录。
+
+它有两个保护：
+
+批量后处理时，如果当前不是最后一个对象，则跳过打开目录。
+
+2 秒内同一目录重复调用则跳过，避免重复弹窗。
+
+Windows 下它通过 VBS + wscript.exe //B //Nologo 异步执行，尝试找到已有 Explorer 窗口并激活，否则打开新窗口。
+
+程序结束收尾
+MOM_end_of_program 中执行：
+
+自定义程序尾。
+
+rewind/stop 模板。
+
+智能分组清理。
+
+刀具指纹相关命令。
+
+listing trailer。
+
+关闭 warning/listing 文件。
+
+打开输出目录。
+
+这说明“输出路由”和“临时文件清理/打开目录”都集中在程序结束阶段收束。
+
+输出规则分析
+README 明确当前输出规则：
+
+选中 NC_PROGRAM：一级组生成文件夹；一级组下独立工序单独输出；二级组输出单一合并 NC。
+
+选中一级组：只输出该组下独立工序和二级组合并 NC。
+
+选中单工序：输出到所属一级组目录。
+
+选中二级组：输出到所属一级组目录，文件名为二级组名，组内工序合并。
+
+多层管理组保留为目录层级。
+
+不默认生成“每个一级程序组一个合并 NC 文件”。
+
+输出总目录固定为：
+
+部件所在目录/部件名/
+部件名优先来自 Python Journal 设置的环境变量，原生后处理入口则由 Tcl 兜底推断。
+
+“列出输出”临时 NC 链路是项目高风险核心
+项目最关键的稳定性点是：不能为了减少临时文件而破坏 NX 信息窗口的 NC 预览链路。
+
+README 明确说明 NX “列出输出/信息窗口”显示 NC 代码时，依赖主 ptp_file_name 对应的 NC 输出流，而不是 .lpt。
+
+当前 Tcl 实现中：
+
+当检测到 NX 原始组合输出文件时，不删除它，而是打开 append 句柄 my_original_ptp_chan。
+
+PB_CMD_before_output 会把每行 mom_o_buffer 镜像写入 my_original_ptp_chan 并 flush。
+
+CLOSE_files 会关闭该句柄，并把原始 .nc/.ptp/.lpt 纳入延迟清理。
+
+这条链路是 NX 信息窗口能看到 NC 代码的关键，后续维护时绝对不能改成“只在勾选列出输出时才维护”，也不能用 .lpt 替代主 NC 文件。
+
+清理策略分析
+CLOSE_files 被重定义，用来增强防御并处理临时文件清理。它先保证 warning_file_name 和 lpt_file_name 存在，避免变量未定义导致崩溃，然后调用原始 CLOSE_files_ORIG。
+
+清理目标包括：
+
+my_cleanup_files
+
+原始主输出文件
+
+同名 .ptp 或 .nc sibling
+
+.lpt listing 文件
+
+延迟策略：
+
+勾选“列出输出”时默认 10000 ms。
+
+未勾选时默认 1000 ms。
+
+如果勾选“列出输出”但手工设置低于 10000ms，会强制提升到 10000ms。
+
+README 中的清理策略与代码一致。
+
+项目的主要设计优点
+1. 对 NX12 兼容性考虑充分
+Python 端兼容多种 NXOpen API 名称和参数组合。
+
+Tcl 端大量使用 catch、info exists、info commands，符合 NX12 老 Tcl 环境下的防御式写法。
+
+2. Python 与 Tcl 职责边界清晰
+Python 负责“看清 CAM 树”和“发起后处理”；Tcl 负责“实际输出路由、拆分/合并、清理”。README 对这两个职责有清晰划分。
+
+3. 避免旧缓存误用
+Tcl 只在 NX_SMART_POST_USE_CACHE=1 时加载缓存，普通后处理不会误读历史 nx_cam_hierarchy.tcl。
+
+4. 保留 NX 预览体验
+项目没有简单删除主输出文件，而是通过 my_original_ptp_chan 镜像主输出流，确保“列出输出”仍能看到 NC 代码。
+
+5. 自动打开目录体验完整
+批量最后一次打开、2 秒去重、Explorer 激活而非重复开窗口，这些都说明项目已经关注实际操作者体验。
+
+后续维护建议
+必须重点保护的区域
+不要破坏 my_original_ptp_chan 链路。
+这是 NX 信息窗口显示 NC 代码的核心。相关代码在 PB_CMD_before_output 和 CLOSE_files。
+
+不要让普通 NX 后处理读取旧缓存。
+NX_SMART_POST_USE_CACHE=1 是区分自动 Journal 与普通后处理的关键开关。
+
+不要把一级组默认合并成一个总 NC。
+当前规则明确要求一级组目录化，二级组才合并。
+
+不要修改稳定基线文件。
+1111.tcl、Original/、ugpost_base.tcl 应继续作为参考/备份，不要作为常规修改目标。
+
+建议补强的方向
+可以补一份“关键链路测试清单”，把 NC_PROGRAM、一级组、二级组、单工序、多层管理组、列出输出开/关组合整理成表格。
+
+可以考虑给 nx_smart_post_journal.log 日志格式加版本号，方便现场排查用户是否运行了新版本脚本。
+
+如果后续要改 Tcl 路由逻辑，建议先建立最小可复现 CAM 树样例并记录预期目录结构。
+
+我使用的命令
+pwd && find .. -name AGENTS.md -print && rg --files -g '!*Original*' -g '!1111.tcl' | sed -n '1,120p'
+
+cat AGENTS.md && sed -n '1,220p' README.md && sed -n '1,260p' NX_Smart_Post/application/get_cam_hierarchy_and_post.py
+
+sed -n '260,620p' NX_Smart_Post/application/get_cam_hierarchy_and_post.py && rg -n "proc (PB_CMD_before_output|CLOSE_files|MOM_start_of_path|MOM_end_of_program|PB_CMD_user_open_output_dir)|my_original_ptp_chan|NX_SMART_POST_USE_CACHE|nx_cam_hierarchy|rename|MOM_start_of_path_orig|my_cleanup_delay_ms" smart_post.tcl smart_post_user.tcl
+
+git status --short && nl -ba README.md | sed -n '1,180p' && nl -ba NX_Smart_Post/application/get_cam_hierarchy_and_post.py | sed -n '1,220p' && nl -ba NX_Smart_Post/application/get_cam_hierarchy_and_post.py | sed -n '620,860p'
+
+nl -ba NX_Smart_Post/application/get_cam_hierarchy_and_post.py | sed -n '840,1020p' && nl -ba smart_post.tcl | sed -n '3010,3130p' && nl -ba smart_post.tcl | sed -n '4390,4435p' && nl -ba smart_post.tcl | sed -n '5638,5760p' && nl -ba smart_post_user.tcl | sed -n '236,430p'
+
+nl -ba smart_post_user.tcl | sed -n '430,560p' && nl -ba smart_post.tcl | sed -n '480,530p' && nl -ba smart_post.tcl | sed -n '2328,2360p'
+
+Testing / checks
+
+✅ git status --short — 工作区未显示我本次造成的改动；本次为分析任务，未修改、未提交、未创建 PR。
+
+有没有什么可以优化改进的地方？无论是功能逻辑，代码实现，说明文件，列表展示，先不改
+复制
+结论
+有，可以优化的地方不少，但我建议分成 “低风险文档/展示优化”、“中风险代码质量优化”、“高风险功能逻辑优化” 三类来做。
+当前项目已经比较成熟，尤其是 Python Journal 生成 CAM 层级缓存 + Tcl 智能路由 + 保留 NX 列出输出链路 + 延迟清理临时文件 这条主线已经形成闭环。README 对整体目标、流程、输出规则、清理策略和调试方式都有描述。
+
+下面我按优先级和风险给出建议，仅分析，不修改。
+
+一、最值得优先优化的地方
+1. 文档中的输出命名规则需要统一
+这是我认为最应该优先处理的点，因为它是 低风险、高收益。
+
+目前 README 里写的是：
+
+选中单工序：工序名_刀具名.nc
+
+选中二级组：二级组名_刀具名.nc
+
+代码里实际也确实会把刀具名拼进文件名：
+
+一级组内直接工序：${mom_operation_name}_${safe_tool_name}
+
+二级组或更深子组：[二级组名]_${safe_tool_name}
+
+但是你给我的项目规则说明里，示例是：
+
+TOP-01.nc
+TOP-02.nc
+TOP-03.nc
+没有刀具名后缀。
+所以这里存在一个需要确认的产品决策：
+
+方案 A：保留刀具名后缀
+优点：
+
+无刀库机床场景下，文件名直接体现刀具，操作者更安全。
+
+当前代码和 README 已经偏向这个实现。
+
+二级组合并时，如果按刀具命名，也能降低误混刀风险。
+
+缺点：
+
+文件名较长。
+
+如果刀具名包含中文、空格、特殊符号，虽然代码做了部分清理，但仍可能影响现场文件管理。
+
+和你当前规则示例不一致。
+
+方案 B：恢复纯工序/组名文件名
+优点：
+
+输出目录更简洁。
+
+和你给出的最终规则示例一致。
+
+便于和 CAM 程序顺序树名称一一对应。
+
+缺点：
+
+无刀库机床操作者需要打开 NC 或查看注释才能确认刀具。
+
+同名工序/组更容易冲突。
+
+需要确认当前刀具指纹校验是否足够承担安全检查。
+
+我的建议
+短期：先统一文档，不急改代码。
+建议在 README 中明确写成：
+
+当前实现默认输出 工序名_刀具名.nc / 二级组名_刀具名.nc。如果希望输出纯 工序名.nc，后续可增加开关变量控制。
+
+这样不改变行为，只减少误解。
+
+2. smart_post_user.tcl 有一个注释拼写错误
+PB_CMD_user_open_output_dir 附近有注释写成：
+
+NW_SMART_POST_BATCH_INDEX/TOTAL
+但实际环境变量是：
+
+NX_SMART_POST_BATCH_INDEX
+NX_SMART_POST_BATCH_TOTAL
+代码本身使用的是正确的 NX_SMART_POST_* 变量。
+
+这是纯注释问题，低风险，建议后续文档整理时一起修。
+
+3. README 和 PB 操作说明可以做成“维护者视角 + 操作者视角”两份
+目前 README 已经覆盖很多内容，包括：
+
+工作流程
+
+默认后处理器
+
+输出目录规则
+
+CAM 层级输出规则
+
+Python Journal 实现要点
+
+Tcl 后处理器实现要点
+
+列出输出链路
+
+清理策略
+
+打开输出目录
+
+调试与常见问题
+
+但对实际用户来说，README 稍偏“技术维护者”。
+建议未来拆成：
+
+README.md
+面向使用者：
+
+如何安装/复制。
+
+如何在 NX 中运行。
+
+选择 NC_PROGRAM / 一级组 / 二级组 / 单工序分别会输出什么。
+
+输出目录在哪里。
+
+临时 .nc/.ptp/.lpt 文件短暂出现是否正常。
+
+常见报错怎么判断。
+
+DEVELOPMENT.md 或 维护说明.md
+面向维护者：
+
+Python Journal 与 Tcl 的协作机制。
+
+NX_SMART_POST_USE_CACHE 的作用。
+
+my_original_ptp_chan 预览链路禁区。
+
+Hook MOM 事件机制。
+
+文件清理机制。
+
+修改 Tcl 后必须复测的场景。
+
+这样可以减少现场用户误操作，也方便后续维护。
+
+二、功能逻辑方面的优化建议
+4. 增加“文件命名策略”开关
+当前代码在生成文件名时直接拼接刀具名。
+
+可以考虑增加一个 Tcl 全局变量，例如：
+
+set my_nc_filename_mode "operation_tool"
+支持：
+
+模式	示例	说明
+operation	TOP-01.nc	只用工序/组名
+operation_tool	TOP-01_D63R08L200.nc	当前行为
+operation_tool_number	TOP-01_T01.nc	更短，更适合现场
+operation_h_register	TOP-01_H01.nc	适合按刀补区分
+这样可以兼容两个方向：
+
+文档示例中的简洁命名。
+
+当前代码里的刀具增强命名。
+
+风险中等，因为会影响输出文件名和合法 NC 白名单逻辑，需要 NX 实机复测。
+
+5. 二级组合并的刀具不一致处理可以从“警告”升级为可配置策略
+当前二级组合并时，会构建刀具指纹：
+
+刀具名称|刀具类型|直径|圆角|长度
+并和基准刀具指纹比较。
+
+但代码中 MOM_abort 是注释掉的。
+
+这说明当前更像是 输出警告但不中止。
+
+对无刀库机床来说，二级组合并混入不同刀具有实际安全风险。可以考虑增加配置：
+
+set my_abort_on_merged_group_tool_mismatch 0
+策略：
+
+值	行为
+0	当前行为，只输出警告
+1	发现混刀立即 MOM_abort
+2	自动拆分为不同刀具文件，后续可选
+我的建议
+短期不建议直接改成强制 abort，因为可能影响现有现场流程。
+更稳妥的是先做开关，默认保持当前行为。
+
+6. 层级缓存可以增加“唯一标识”以避免同名组冲突
+Python 缓存里已经记录了 tag、name、parent、depth、path、type 等信息。
+
+但写出 Tcl 缓存时，数组 key 主要使用 name。
+
+如果 CAM 树里有同名组或同名工序，例如：
+
+NC_PROGRAM
+├── TOP
+│   └── ROUGH
+└── LEFT
+    └── ROUGH
+使用名称作为 key 可能存在覆盖或歧义风险。
+
+可以考虑未来增强为：
+
+nx_cam_parent_by_tag($tag)
+nx_cam_path_by_tag($tag)
+nx_cam_name_by_tag($tag)
+或者使用路径作为 key：
+
+nx_cam_parent_path($path)
+风险较高，因为 Tcl 端当前路由逻辑大量围绕名称和组栈运行，需要谨慎改。
+
+我的建议
+先在文档中说明：
+
+CAM 程序组和工序名称建议保持唯一，避免同名导致路由歧义。
+
+这属于低风险改进。
+真正改成 tag/path 路由，可以作为后续大版本优化。
+
+7. Python Journal 运行结束后可以清理环境变量
+当前 main() 中设置了：
+
+NX_SMART_POST_PART_NAME
+NX_SMART_POST_PART_NAME_UTF8_HEX
+NX_SMART_POST_USE_CACHE
+并调用后处理。
+
+批量变量在 _postprocess() 里有 finally 清理。
+
+但 NX_SMART_POST_USE_CACHE、NX_SMART_POST_PART_NAME、NX_SMART_POST_PART_NAME_UTF8_HEX 没看到类似的最终清理。
+这在 NX 同一进程内多次运行时，理论上可能留下状态。
+
+不过 Tcl 端已经用 NX_SMART_POST_USE_CACHE=1 控制是否读取缓存。
+
+可优化方案
+在 Python main() 中使用 try/finally：
+
+调用后处理前保存旧环境变量。
+
+调用结束后恢复旧值或删除。
+
+风险中等。需要确认 NXOpen 后处理调用是否同步返回。如果同步返回，清理安全；如果某些环境中后处理异步执行，过早清理可能影响 Tcl 端。
+
+我的建议
+先不急改。可以先通过日志确认 NX12 该 API 是否同步完成。当前 Postprocess succeeded 是在方法返回后记录的。
+
+8. 临时清理脚本可以增加“保留开关”
+当前清理逻辑比较完善：
+
+勾选“列出输出”默认 10 秒。
+
+不勾选默认 1 秒。
+
+Windows 用隐藏 VBS 启动 .cmd。
+
+清理日志写入 nx_cleanup_latest.log。
+
+但调试现场问题时，有时希望临时保留主输出 .nc/.ptp/.lpt。
+
+可以增加：
+
+set my_disable_temp_preview_cleanup 1
+或者环境变量：
+
+NX_SMART_POST_KEEP_TEMP=1
+用于排查：
+
+NX 信息窗口空白。
+
+.lpt 内容异常。
+
+主输出与拆分输出不一致。
+
+清理过早。
+
+风险低到中等。只要默认仍清理，不影响现有行为。
+
+9. 输出目录打开逻辑可以增加开关
+当前 MOM_end_of_program 会在 CLOSE_files 后调用 PB_CMD_open_smart_nc_output_dir。
+
+而 smart_post_user.tcl 的打开目录逻辑已经有批量跳过和 2 秒去重。
+
+但现场自动批处理或无人值守时，可能不希望打开 Explorer。可以增加：
+
+set my_auto_open_output_dir 1
+或环境变量：
+
+NX_SMART_POST_AUTO_OPEN_DIR=0
+默认保持打开；需要静默后处理时关闭。
+
+风险低。
+建议后续作为用户可配置项加入 README。
+
+三、代码实现层面的优化建议
+10. 把 Tcl 配置项集中到一个区域
+当前配置变量分散在不同位置，例如：
+
+my_smart_route_debug 相关逻辑在 debug 区域。
+
+my_output_operation_separator 在 MOM_start_of_path 内使用。
+
+my_cleanup_delay_ms 在 CLOSE_files 内使用。
+
+建议未来建立一个“用户配置区”，例如：
+
+# ===============================
+# NX Smart Post User Settings
+# ===============================
+# set my_nc_filename_mode "operation_tool"
+# set my_output_operation_separator 1
+# set my_cleanup_delay_ms ""
+# set my_auto_open_output_dir 1
+# set my_abort_on_merged_group_tool_mismatch 0
+# set my_disable_temp_preview_cleanup 0
+这样操作者或维护者不用在 5000 多行 Tcl 中查变量。
+
+风险低，但需要注意不要与 Post Builder 重新生成逻辑冲突。更安全的方式是放在 smart_post_user.tcl 中。
+
+11. Python 日志可以增加环境快照
+当前 Journal 会写 nx_smart_post_journal.log。
+
+可以在日志开头增加：
+
+NX post 名称。
+
+输出目录。
+
+工作部件名。
+
+选择对象。
+
+是否使用缓存。
+
+UGII_CAM_POST_DIR
+
+UGII_BASE_DIR
+
+resolved post 路径或注册名。
+
+部分信息现在已经记录，比如后处理器搜索目录和注册情况在 _candidate_post_dirs()、_resolve_post_name() 中有日志。
+
+但可以整理成更结构化的日志头，方便现场复制给维护者。
+
+风险低。
+
+12. Python 后处理器注册逻辑可以增加“只检查不修改”模式
+当前 _ensure_template_post_registration() 在必要时会尝试改写 template_post.dat。
+
+这很方便，但也有现场风险：
+
+用户权限不足。
+
+公司环境不允许自动改 NX 安装目录配置。
+
+多个后处理器共享 template_post.dat，自动插入可能引发维护疑虑。
+
+可以增加环境变量：
+
+NX_SMART_POST_NO_REGISTER=1
+此时只解析，不修改 template_post.dat，失败时给出明确日志。
+
+风险中等，因为涉及 post 解析路径和用户部署习惯。
+但作为可选开关比较安全。
+
+13. 文件名清理逻辑可以抽成统一函数
+代码里对刀具名做了 string map 清理。
+
+另外项目里也有“清理文件名，移除非法字符”的逻辑入口。
+
+如果目前存在多处文件名清理，建议统一成一个 Tcl proc，例如：
+
+proc PB_CMD_sanitize_file_component { value } {
+    ...
+}
+统一处理：
+
+空格。
+
+/ \ : * ? " < > |
+
+控制字符。
+
+尾部点号和空格。
+
+Windows 保留名，如 CON、PRN、AUX、NUL。
+
+最大长度截断。
+
+风险中等，因为改动会影响最终输出文件名，需要实机覆盖测试。
+
+四、列表展示与用户体验优化
+14. README 输出示例可以补充“选择对象 → 输出结果”表格
+当前 README 有规则和树形示例。
+
+建议补一个表格：
+
+用户选择	输出目录	输出文件	是否合并
+NC_PROGRAM	部件名/一级组/	一级组下直接工序、二级组文件	二级组合并
+一级组	部件名/一级组/	该组内工序和二级组	二级组合并
+二级组	部件名/一级组/	二级组名 .nc	是
+单工序	部件名/一级组/	工序名 .nc	否
+如果最终决定保留刀具名后缀，表格里就写 工序名_刀具名.nc。
+
+这类文档优化非常低风险，建议优先做。
+
+15. 增加“正常现象 vs 异常现象”表格
+README 现在已经有常见问题，比如“列出输出没有 NC 代码”、“未勾选列出输出仍短暂生成部件名 NC”、“清理文件没有删除”。
+
+建议整理成表格：
+
+现象	是否正常	原因	看哪里
+部件名 .nc 短暂出现	正常	NX 主输出预览链路	稍后自动清理
+.lpt 短暂出现	正常	listing/commentary 文件	%TEMP%/nx_cleanup_latest.log
+信息窗口没有 NC	异常	my_original_ptp_chan 链路可能断了	检查 PB_CMD_before_output
+输出目录重复打开	异常/可优化	去重变量未生效	NX_SMART_POST_OPENED_OUTPUT_*
+这能降低现场误报。
+
+16. 增加“修改禁区”章节
+虽然 AGENTS 规则里已经有禁区，但普通维护者未必会看。建议把关键禁区写入 README 或维护文档：
+
+不要删除 my_original_ptp_chan。
+
+不要删除 PB_CMD_before_output。
+
+不要把原始主输出文件清理提前到 NX 读取前。
+
+不要用 .lpt 替代主 NC 预览。
+
+不要让普通 NX 后处理读取旧 nx_cam_hierarchy.tcl。
+
+不要默认生成一级组总合并 NC。
+
+这些点都和现有 README 的“列出输出与临时汇总 NC”章节一致。
+
+五、测试与验证体系优化
+17. 建议增加一个手工验收矩阵
+README 已经列了 NX12 实机复测重点：
+
+选中 NC_PROGRAM
+
+选中单个一级组
+
+选中二级组
+
+选中单个工序
+
+多层管理组路径
+
+勾选与不勾选“列出输出”
+
+自动 Journal 与 NX 原生后处理两种入口
+
+建议把它扩展成矩阵：
+
+场景	选择对象	列出输出	预期输出	预期临时文件	预期打开目录
+A1	NC_PROGRAM	ON	一级组目录 + 二级组合并	10 秒后清理	打开一次
+A2	NC_PROGRAM	OFF	同上	1 秒后清理	打开一次
+B1	一级组	ON	只输出该组	10 秒后清理	打开一次
+C1	二级组	ON	单个合并 NC	10 秒后清理	打开一次
+D1	单工序	ON	单个 NC	10 秒后清理	打开一次
+E1	多层管理组	ON	管理组作为目录	10 秒后清理	打开一次
+这会让后续任何改动都有明确回归标准。
+
+18. Python 可做静态语法检查，但 NXOpen 导入限制要说明
+README 已经建议：
+
+python -m py_compile NX12POST/NX_Smart_Post/application/get_cam_hierarchy_and_post.py
+用于 Python 语法验证。
+
+但是普通容器/非 NX 环境下，import NXOpen 可能导致检查失败。代码顶部直接导入了 NXOpen 和 NXOpen.CAM。
+
+可以在文档里说明：
+
+py_compile 最好在 NX Python 环境或已配置 NXOpen 的环境中运行；普通系统 Python 可能因缺少 NXOpen 而失败。
+
+或者后续把 NXOpen 导入延迟到 main() 内，便于普通 Python 环境做语法检查。
+但这涉及代码结构调整，风险低到中等。
+
+六、我不建议轻易改的地方
+1. 不建议重写 PB_CMD_before_output 链路
+PB_CMD_before_output 目前只做一件非常关键的事：把 mom_o_buffer 写入原始主输出文件句柄。
+
+这是 NX 信息窗口显示 NC 代码的关键链路，不应为了“代码更整洁”而合并、删除或改成 listing 输出。
+
+2. 不建议提前删除主输出 .nc/.ptp/.lpt
+当前清理延迟逻辑是为了等 NX 信息窗口读取完成。
+
+如果改成同步删除或过短延迟，可能复现“列出输出没有 NC 代码”的问题。
+
+3. 不建议取消 NX_SMART_POST_USE_CACHE
+这个环境变量防止普通 NX 后处理误读历史缓存。
+
+如果取消，可能出现“上一次部件/上一次选择对象的层级影响本次输出”的隐蔽问题。
+
+4. 不建议直接把刀具不一致改成强制 abort
+虽然无刀库机床混刀风险高，但当前代码只是输出警告，MOM_abort 是注释状态。
+
+直接改强制中止可能影响现有加工习惯。建议先做开关。
+
+七、建议实施优先级
+P0：只改文档/注释，低风险
+统一输出文件命名规则说明。
+
+修正 NW_SMART_POST_BATCH_INDEX/TOTAL 注释拼写。
+
+README 增加“选择对象 → 输出结果”表格。
+
+README 增加“正常现象/异常现象”表格。
+
+README 增加“修改禁区”。
+
+P1：小功能开关，中低风险
+增加自动打开输出目录开关。
+
+增加临时文件保留开关。
+
+增加二级组混刀时是否 abort 的开关。
+
+增加文件命名策略开关。
+
+P2：结构性优化，中高风险
+层级缓存从 name-key 增强到 tag/path-key。
+
+统一文件名 sanitize 函数。
+
+Python 环境变量设置改为 try/finally 保存和恢复。
+
+Python post 注册逻辑增加只读/只检查模式。
+
+Tcl 配置集中到 smart_post_user.tcl 用户配置区。
+
+八、如果下一步要动手，我建议先做哪一项？
+如果你后续让我开始改，我建议第一步做：
+
+“文档与实际行为对齐”小改
+内容包括：
+
+README 明确当前文件名是否带刀具名。
+
+增加输出规则表格。
+
+增加临时文件正常现象说明。
+
+修正 NW_SMART_POST_BATCH_INDEX/TOTAL 注释。
+
+不碰 Tcl 核心逻辑。
+
+这一步风险最低，而且能先把“项目规则、README、代码行为”统一起来。
+等文档统一后，再决定是否引入命名策略开关或刀具不一致 abort 开关。
+
+本次使用的命令
+rg -n "tool|刀具|文件名|_刀具|mom_tool_name|my_use_tool|separator|输出规则|选中单工序|选中二级组|DEFAULT_POST_NAME|NX_SMART_POST_PART_NAME|cleanup|my_original_ptp_chan|PB_CMD_before_output|batch|BATCH|NW_SMART|NX_SMART" README.md PB操作说明.md smart_post.tcl smart_post_user.tcl NX_Smart_Post/application/get_cam_hierarchy_and_post.py
+
+Testing / checks
+
+✅ rg -n "tool|刀具|文件名|_刀具|mom_tool_name|my_use_tool|separator|输出规则|选中单工序|选中二级组|DEFAULT_POST_NAME|NX_SMART_POST_PART_NAME|cleanup|my_original_ptp_chan|PB_CMD_before_output|batch|BATCH|NW_SMART|NX_SMART" README.md PB操作说明.md smart_post.tcl smart_post_user.tcl NX_Smart_Post/application/get_cam_hierarchy_and_post.py — 用于定位命名规则、批量变量、清理链路、刀具逻辑和文档描述差异。
+
+README 明确当前文件名是否带刀具名。----带刀具名
+\n增加输出规则表格。\n\n增加临时文件正常现象说明。\n\n修正 NW_SMART_POST_BATCH_INDEX/TOTAL 注释。\n\n不碰 Tcl 核心逻辑。\n\n
+复制
+Summary
+
+明确 README 中当前正式 NC 文件名规则：真实输出文件带刀具名后缀，格式为 工序名_刀具名.nc 或 二级组名_刀具名.nc，并说明这是为了无刀库机床降低误装刀风险。
+
+增加“用户选择 → 输出目录 → 输出文件名 → 合并规则”表格，覆盖 NC_PROGRAM、一级组、单工序、二级组四类选择场景。
+
+增加“临时文件正常现象”说明表，解释临时 .nc、.ptp、.lpt 和 %TEMP%/nx_cleanup_latest.log 出现的原因与后续处理。
+
+修正 smart_post_user.tcl 中批量环境变量注释，把 NW_SMART_POST_BATCH_INDEX/TOTAL 改为正确的 NX_SMART_POST_BATCH_INDEX/TOTAL；未改 Tcl 核心逻辑。
+
+已提交 commit：a9e4f16 docs: clarify smart post output rules
+已创建 PR 记录：Clarify smart post output rules
+
+Testing
+
+✅ git diff --check
+
+✅ git status --short
+
+
+文件 (2)
+P0级改完了吗
+复制
+结论
+是的，前面列的 P0 级事项已经改完并提交。当前最新提交是：
+
+5e233b2 Document NC filename/output rules and temp-file behavior; fix env var typo in TCL
+
+本轮我只是核对确认，没有做新的代码修改，因此没有新增 commit / PR。
+
+P0 完成情况核对
+P0 项	状态	说明
+README 明确当前文件名是否带刀具名	✅ 已完成	README 已明确写明真实 NC 文件名带刀具名后缀，格式为 工序名_刀具名.nc 或 二级组名_刀具名.nc。
+增加输出规则表格	✅ 已完成	已增加“用户选择 / 输出目录 / 输出文件名 / 合并规则”表格，覆盖 NC_PROGRAM、一级组、单工序、二级组。
+增加临时文件正常现象说明	✅ 已完成	已增加临时 .nc、.ptp、.lpt 和 %TEMP%/nx_cleanup_latest.log 的正常现象说明表。
+修正 NW_SMART_POST_BATCH_INDEX/TOTAL 注释	✅ 已完成	注释已改为正确的 NX_SMART_POST_BATCH_INDEX/TOTAL，实际代码本来就使用正确变量。
+不碰 Tcl 核心逻辑	✅ 已遵守	只改了 smart_post_user.tcl 的注释，没有改批量判断逻辑。
+额外说明
+我没有看到这次消息里附带具体 inline comments；如果评审里还有具体行内意见，需要把评论内容发我，我再逐条处理。
+
+Testing / checks
+
+✅ git status --short
+
+✅ git log -1 --oneline
+
+✅ nl -ba README.md | sed -n '44,130p'
+
+✅ nl -ba smart_post_user.tcl | sed -n '248,256p'
+
+那就改p1级
+复制
+Summary
+
+已完成 P1：增加 NC 文件名策略开关，默认仍保持 工序名_刀具名.nc / 二级组名_刀具名.nc，可通过 my_nc_filename_mode 或 NX_SMART_POST_FILENAME_MODE 切换为纯工序名、刀号后缀或 H 寄存器后缀。
+
+已完成 P1：增加二级组合并刀具不一致时的强制中止开关，默认只报警不中止；启用 my_abort_on_merged_group_tool_mismatch=1 或 NX_SMART_POST_ABORT_ON_TOOL_MISMATCH=1 后会 MOM_abort。
+
+已完成 P1：增加临时预览文件保留开关，启用 my_disable_temp_preview_cleanup=1 或 NX_SMART_POST_KEEP_TEMP=1 时跳过后台清理，便于排障保留临时 .nc/.ptp/.lpt。
+
+已完成 P1：增加静默后处理开关，启用 my_auto_open_output_dir=0 或 NX_SMART_POST_AUTO_OPEN_DIR=0 时不自动打开/聚焦输出目录。
+
+已更新 README，说明默认文件名仍带刀具名，并集中列出 P1 可选功能开关、默认值、可选值和作用。
+
+已提交 commit：4b50b85 feat: add smart post runtime switches
+已创建 PR 记录：Add smart post runtime switches
+
+Testing
+
+✅ git diff --check
+
+✅ tclsh /tmp/nx_p1_syntax.tcl
+
+✅ git status --short
+
+
+文件 (3)
+你这些改动是直接改动的本地文件吗
+复制
+是的，这些改动是直接修改了当前仓库工作区里的本地文件，然后已经提交到了当前分支。
+
+本次 P1 改动涉及的本地文件是：
+
+README.md
+
+smart_post.tcl
+
+smart_post_user.tcl
+
+并已提交为：
+
+4b50b85 feat: add smart post runtime switches
+也就是说：
+
+我不是只给建议。
+
+我不是只改 PR 描述。
+
+我确实直接编辑了 /workspace/NX12POST 当前仓库里的文件。
+
+编辑完成后执行了 git add、git commit。
+
+然后按要求调用了 PR 记录工具。
+
+如果你想确认，可以在仓库里运行：
+
+git show --stat 4b50b85
+git show 4b50b85 -- README.md smart_post.tcl smart_post_user.tcl
+另外，之前 P0 的提交是：
+
+5e233b2 Document NC filename/output rules and temp-file behavior; fix env var typo in TCL
+所以当前历史里至少有这两次我做的本地提交：
+
+5e233b2  P0 文档/注释改动
+4b50b85  P1 功能开关改动
+还没推送到github？
+复制
+对，还没有推送到 GitHub。
+
+我刚核对了当前仓库状态：
+
+git status -sb
+git remote -v
+git log --oneline -5 --decorate
+结果显示：
+
+## work
+4b50b85 (HEAD -> work) feat: add smart post runtime switches
+5e233b2 Document NC filename/output rules and temp-file behavior; fix env var typo in TCL
+...
+并且 git remote -v 没有输出任何 remote，说明当前本地仓库没有配置 GitHub 远程地址。因此现在的状态是：
+
+✅ 改动已经提交到本地分支 work。
+
+✅ 最新本地提交是 4b50b85。
+
+❌ 还没有 push 到 GitHub。
+
+❌ 当前仓库没有配置 origin 或其他远程仓库。
+
+make_pr 工具只是记录 PR 标题和正文，不等于真正推送到 GitHub 或创建 GitHub PR。
+
+如果要推送，需要先配置远程仓库，例如：
+
+git remote add origin <你的 GitHub 仓库地址>
+git push -u origin work
+如果远程已经应该存在但这里没显示，那说明当前容器里的这个 repo 没有保留 remote 配置。
+
+你所谓的本地是在哪里？肯定不在我的电脑上哈
+复制
+对，你理解得对：我说的“本地”不是你的电脑本地。
+
+这里的“本地”指的是我当前运行所在的执行环境/容器里的仓库目录：
+
+/workspace/NX12POST
+也就是说：
+
+我修改的是这个远程执行环境里的文件。
+
+我提交的是这个环境里的 Git 仓库。
+
+这些改动目前没有自动同步到你的电脑。
+
+也没有推送到 GitHub，因为这个环境里当前没有配置 origin 远程仓库。
+
+你电脑上的项目文件不会因为我这里提交了 commit 就自动变化。
+
+当前状态可以理解成：
+
+你的电脑
+  └── 没有被我直接改动
+
+GitHub
+  └── 还没有收到 push
+
+当前执行环境 / 容器
+  └── /workspace/NX12POST
+      ├── README.md 已改
+      ├── smart_post.tcl 已改
+      ├── smart_post_user.tcl 已改
+      └── Git 本地提交：
+          5e233b2 P0 改动
+          4b50b85 P1 改动
+如果你想把这些改动拿到你的电脑或 GitHub，需要走其中一种方式：
+
+在这个环境里配置 GitHub remote 后 push。
+
+把 diff/patch 导出给你，你在自己电脑上应用。
+
+你提供远程仓库地址，我把当前分支 push 上去。
+
+你在自己电脑上手动复现这些改动。
+
+所以，是的，肯定不是直接改在你的电脑上。
+
+https://github.com/whua898/NX12POST
+复制
+我已经把远程地址配置到当前执行环境里的仓库了：
+
+origin  https://github.com/whua898/NX12POST.git
+然后尝试推送当前分支 work：
+
+git push -u origin work
+但推送失败，原因不是 Git 配置问题，而是当前执行环境访问 GitHub 被代理/网络拦截：
+
+fatal: unable to access 'https://github.com/whua898/NX12POST.git/': CONNECT tunnel failed, response 403
+所以当前状态是：
+
+✅ GitHub remote 已配置为 https://github.com/whua898/NX12POST.git
+
+❌ 没有成功 push 到 GitHub
+
+❌ GitHub 上目前还拿不到我这里的两个提交
+
+⚠️ 失败原因：当前容器访问 GitHub HTTPS 被 403 拦截
+
+你可以选择两种方式继续：
+
+你在本地电脑上拉取/应用 patch
+我可以导出这两个 commit 的 patch 给你。
+
+换一个能访问 GitHub 的环境执行 push
+需要把当前提交带过去后执行：
+
+git remote add origin https://github.com/whua898/NX12POST.git
+git push -u origin work
+Testing / checks
+
+✅ git remote add origin https://github.com/whua898/NX12POST.git 2>/dev/null || git remote set-url origin https://github.com/whua898/NX12POST.git
+
+✅ git remote -v
+
+⚠️ git push -u origin work — 失败原因：当前环境访问 GitHub HTTPS 出现 CONNECT tunnel failed, response 403。
+
+创建环境时都能拉取，怎么会不能推送呢
+复制
+你这个质疑是合理的。更准确地说：
+
+“环境创建时能拉取”不代表“当前容器里能直接推送”。
+
+我刚进一步查了，不只是 push 失败，连当前容器里直接访问 GitHub remote 的只读命令也失败：
+
+GIT_CURL_VERBOSE=1 git ls-remote origin HEAD
+失败点在这里：
+
+Connected to proxy (172.30.3.3) port 8080
+Establish HTTP proxy tunnel to github.com:443
+HTTP/1.1 403 Forbidden
+CONNECT tunnel failed, response 403
+fatal: unable to access 'https://github.com/whua898/NX12POST.git/': CONNECT tunnel failed, response 403
+这说明问题发生在 当前执行环境的 HTTP 代理层，还没到 GitHub 认证阶段。
+
+也就是说现在不是这种情况：
+
+GitHub 拒绝用户名/密码
+GitHub token 不对
+仓库没有权限
+而是这种情况：
+
+当前容器 -> proxy:8080 -> github.com:443
+                ↑
+             代理直接 403
+所以它连建立到 GitHub 的 HTTPS 隧道都没成功。
+
+为什么“创建环境时能拉取”，但这里不能推送？
+常见原因有几个：
+
+1. 初始化拉取可能不是在这个容器里执行的
+很多平台创建工作区时，会由平台后端提前 clone 仓库，然后把结果挂载进 /workspace。
+也就是说：
+
+平台后端可以访问 GitHub
+≠
+当前执行容器可以直接访问 GitHub
+2. 初始代码可能是预置/缓存/挂载进来的
+仓库现在存在于：
+
+/workspace/NX12POST
+但这不一定说明是当前 shell 通过 git clone https://github.com/... 拉下来的。
+
+3. push 比 pull 多一个认证要求
+即使网络通了，push 还需要 GitHub 写权限/token/SSH key。
+不过这次还没走到认证那一步，因为代理已经先返回了 403。
+
+4. 当前环境没有 GitHub remote，一开始是我后来配置的
+之前 git remote -v 没输出 remote。
+我后来按你给的地址配置了：
+
+git remote add origin https://github.com/whua898/NX12POST.git
+但推送时被代理挡住。
+
+当前真实状态
+当前容器本地仓库：
+/workspace/NX12POST
+
+已有本地提交：
+5e233b2 P0 文档/注释改动
+4b50b85 P1 功能开关改动
+
+GitHub：
+还没有收到这些提交
+
+失败原因：
+当前容器访问 github.com:443 的 CONNECT 代理隧道被 403 拒绝
+可以怎么继续？
+最稳的办法是我给你导出 patch，你在自己电脑上应用：
+
+git format-patch c2197ed..HEAD
+或者导出单个合并 diff：
+
+git diff c2197ed..HEAD > nx12post-p0-p1.patch
+你拿到 patch 后，在你电脑上的仓库里：
+
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add smart post docs and runtime switches"
+git push
+如果你想，我下一步可以直接给你生成一个 patch 文件内容。
+
+Testing / checks
+
+✅ git config --list --show-origin | rg -n "proxy|insteadOf|http\\.|credential|url\\." || true
+
+⚠️ GIT_CURL_VERBOSE=1 git ls-remote origin HEAD — 当前容器到 GitHub 的 HTTPS CONNECT 隧道被代理返回 403 Forbidden，所以无法 pull/push。
+
+如何才能正常推送
+复制
+要“正常推送”，需要同时满足 3 个条件：
+
+仓库有正确的 remote 地址
+
+当前环境能访问 GitHub
+
+当前环境有 GitHub 写权限认证
+
+你现在卡住的是第 2 步：当前执行容器访问 GitHub HTTPS 被代理 403 拦截，所以即使 remote 配好了，也推不上去。
+
+一、当前环境为什么不能推送
+我这里执行：
+
+git push -u origin work
+失败信息是：
+
+CONNECT tunnel failed, response 403
+进一步执行：
+
+GIT_CURL_VERBOSE=1 git ls-remote origin HEAD
+也失败，日志显示：
+
+Connected to proxy (172.30.3.3) port 8080
+Establish HTTP proxy tunnel to github.com:443
+HTTP/1.1 403 Forbidden
+CONNECT tunnel failed, response 403
+这说明当前容器连 GitHub 的 HTTPS 隧道都建不起来。
+所以这不是单纯的 GitHub 密码/token 问题，而是 当前执行环境的网络代理不允许访问 GitHub。
+
+二、正常推送需要怎么做
+方案 A：在你自己电脑上推送，最推荐
+因为你的电脑大概率能正常访问 GitHub，也有你的 GitHub 凭据。
+
+步骤 1：确认本地仓库 remote
+在你电脑上的 NX12POST 仓库里执行：
+
+git remote -v
+如果没有 remote，添加：
+
+git remote add origin https://github.com/whua898/NX12POST.git
+如果 remote 地址不对，修改：
+
+git remote set-url origin https://github.com/whua898/NX12POST.git
+步骤 2：确认当前分支
+git branch
+如果你想推到 main：
+
+git checkout main
+如果你想推到新分支，例如：
+
+git checkout -b work
+步骤 3：应用我这里的改动
+因为我这里不能直接 push，所以需要把改动带到你电脑上。可以用 patch。
+
+我这里可以导出：
+
+git format-patch c2197ed..HEAD
+或者：
+
+git diff c2197ed..HEAD > nx12post-p0-p1.patch
+你拿到 patch 后，在你电脑仓库里执行：
+
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add smart post docs and runtime switches"
+步骤 4：推送
+如果推到当前分支：
+
+git push -u origin HEAD
+如果推到指定分支，例如 work：
+
+git push -u origin work
+如果推到 main：
+
+git push origin main
+方案 B：让当前执行环境能访问 GitHub
+如果你希望我这个环境直接 push，需要解决当前容器的网络限制。
+
+需要满足：
+
+当前容器 -> GitHub HTTPS / SSH 可达
+目前 HTTPS 被代理 403 拒绝：
+
+proxy:8080 -> github.com:443 -> 403
+要修复，需要平台/网络侧允许：
+
+github.com:443
+或者提供可用代理配置，例如：
+
+export HTTPS_PROXY=http://可用代理:端口
+export HTTP_PROXY=http://可用代理:端口
+但注意：当前环境已经有一个 proxy 在拦截请求，是否能改取决于平台权限。
+
+方案 C：使用 SSH 推送
+如果当前环境允许 SSH 到 GitHub，可以改用 SSH remote：
+
+git remote set-url origin git@github.com:whua898/NX12POST.git
+git push -u origin work
+但这要求当前环境有 SSH key，并且该 key 已添加到你的 GitHub 账户或仓库 Deploy Key。
+
+检查 SSH：
+
+ls ~/.ssh
+ssh -T git@github.com
+如果没有 key，需要生成：
+
+ssh-keygen -t ed25519 -C "your_email@example.com"
+cat ~/.ssh/id_ed25519.pub
+然后把公钥添加到 GitHub：
+
+GitHub -> Settings -> SSH and GPG keys
+不过当前环境可能同样会限制 SSH 出站，所以这个方案不一定可行。
+
+方案 D：使用 GitHub Personal Access Token 推送
+如果网络是通的，HTTPS 推送可以用 token。
+
+1. GitHub 生成 token
+在 GitHub：
+
+Settings -> Developer settings -> Personal access tokens
+需要至少有仓库写权限。
+
+2. 推送时使用 token
+remote 可以保持：
+
+git remote set-url origin https://github.com/whua898/NX12POST.git
+然后：
+
+git push -u origin work
+GitHub 要用户名和密码时：
+
+Username: 你的 GitHub 用户名
+Password: 粘贴 Personal Access Token
+或者临时写入 URL，不推荐长期保存：
+
+git push https://<TOKEN>@github.com/whua898/NX12POST.git work
+但这个方案在当前容器里仍然会被代理 403 卡住，因为还没到认证阶段。
+
+三、针对你当前情况，我建议这样做
+最稳路径是：
+
+第一步：我导出 patch
+我可以在这里生成：
+
+git format-patch c2197ed..HEAD
+这会包含两个提交：
+
+5e233b2 Document NC filename/output rules and temp-file behavior; fix env var typo in TCL
+4b50b85 feat: add smart post runtime switches
+或者生成一个合并 patch：
+
+git diff c2197ed..HEAD > nx12post-p0-p1.patch
+第二步：你在自己电脑应用
+git checkout main
+git pull
+git checkout -b smart-post-p0-p1
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add smart post docs and runtime switches"
+git push -u origin smart-post-p0-p1
+第三步：你在 GitHub 上开 PR
+GitHub 会提示：
+
+Compare & pull request
+四、如果你希望直接推到 GitHub main
+你本地可以这样：
+
+git checkout main
+git pull origin main
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add smart post docs and runtime switches"
+git push origin main
+但我更建议走分支 PR：
+
+git checkout -b smart-post-p0-p1
+git push -u origin smart-post-p0-p1
+这样更安全。
+
+五、总结
+当前我这里不能正常推送的直接原因是：
+
+当前执行环境的代理拒绝连接 GitHub，返回 403
+要正常推送，有三种可行办法：
+
+你在自己电脑上应用 patch 后 push —— 最推荐。
+
+给当前环境开放 GitHub 网络访问并提供认证。
+
+配置 SSH key 或 PAT，但前提仍是网络能连 GitHub。
+
+如果你愿意，我下一步可以直接生成 patch 内容，你复制到本地应用。
+
+导出 patch
+复制
+已导出 patch。
+
+Patch 文件位置
+合并版 patch
+/workspace/nx12post-p0-p1.patch
+这个是一个普通 git diff patch，包含当前 HEAD 相对基准提交 c2197ed 的全部改动。
+
+行数：
+
+237 /workspace/nx12post-p0-p1.patch
+format-patch 版本
+/workspace/nx12post-patches/0001-Add-configurable-NC-filename-modes-tool-mismatch-abo.patch
+这个是 git format-patch 生成的提交 patch，适合用 git am 应用。
+
+当前历史里这些改动已经被整理成一个提交：
+
+3db75e8 Add configurable NC filename modes, tool-mismatch abort and temp/auto-open toggles; update README
+你本地怎么应用
+方法 A：用普通 patch
+把 /workspace/nx12post-p0-p1.patch 下载/复制到你电脑上的仓库根目录，然后执行：
+
+git checkout -b smart-post-p0-p1
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add configurable NC filename modes and runtime switches"
+git push -u origin smart-post-p0-p1
+方法 B：用 format-patch
+把这个文件复制到你电脑：
+
+0001-Add-configurable-NC-filename-modes-tool-mismatch-abo.patch
+然后在仓库根目录执行：
+
+git checkout -b smart-post-p0-p1
+git am 0001-Add-configurable-NC-filename-modes-tool-mismatch-abo.patch
+git push -u origin smart-post-p0-p1
+Testing / checks
+
+✅ git diff c2197ed..HEAD > /workspace/nx12post-p0-p1.patch
+
+✅ git format-patch -o /workspace/nx12post-patches c2197ed..HEAD
+
+✅ wc -l /workspace/nx12post-p0-p1.patch
+
+✅ find /workspace/nx12post-patches -maxdepth 1 -type f -printf '%f\n' | sort
+
+✅ git status --short
+
+我改了一下环境设置，再看看网络问题
+复制
+我重新测了，网络问题还在，还是同一个代理 403 问题。
+
+我先重新配置了 remote：
+
+git remote add origin https://github.com/whua898/NX12POST.git 2>/dev/null || git remote set-url origin https://github.com/whua898/NX12POST.git
+git remote -v
+remote 现在是：
+
+origin  https://github.com/whua898/NX12POST.git (fetch)
+origin  https://github.com/whua898/NX12POST.git (push)
+然后测试只读访问：
+
+GIT_CURL_VERBOSE=1 git ls-remote origin HEAD
+还是失败：
+
+Connected to proxy (172.30.3.67) port 8080
+Establish HTTP proxy tunnel to github.com:443
+HTTP/1.1 403 Forbidden
+CONNECT tunnel failed, response 403
+fatal: unable to access 'https://github.com/whua898/NX12POST.git/': CONNECT tunnel failed, response 403
+所以现在结论是：
+
+✅ remote 已重新配置成功。
+
+❌ 当前环境仍然无法连 GitHub。
+
+❌ 仍然不是 GitHub 账号/token 问题。
+
+❌ 还没进入 push 认证阶段。
+
+⚠️ 当前代理 proxy:8080 仍然拒绝建立到 github.com:443 的 CONNECT 隧道。
+
+也就是说，环境设置这次还没有解决出站 GitHub 访问问题。
+
+Testing / checks
+
+✅ git remote add origin https://github.com/whua898/NX12POST.git 2>/dev/null || git remote set-url origin https://github.com/whua898/NX12POST.git
+
+✅ git remote -v
+
+⚠️ GIT_CURL_VERBOSE=1 git ls-remote origin HEAD — 仍失败，代理返回 HTTP/1.1 403 Forbidden。
+
+你刚才生成的补丁我如何下载
+复制
+我已经把 patch 和压缩包都放在 /workspace 下了：
+
+1. 直接下载合并 patch
+/workspace/nx12post-p0-p1.patch
+大小约：
+
+14K
+SHA256：
+
+522f90dd61300eef5079c6a6295e8480453e4a0ed86ecf9d0e824abbbbc1e5a0
+2. 下载压缩包
+/workspace/nx12post-patches.tar.gz
+大小约：
+
+5.8K
+里面包含：
+
+nx12post-p0-p1.patch
+nx12post-patches/0001-Add-configurable-NC-filename-modes-tool-mismatch-abo.patch
+SHA256：
+
+56ea2f88a452d387d8bd99aec60fb72f78699e70fa541ce4a8ec8b1c68f8504d
+3. 如果你的界面支持文件浏览/下载
+直接下载这个文件：
+
+/workspace/nx12post-patches.tar.gz
+或者下载单独 patch：
+
+/workspace/nx12post-p0-p1.patch
+4. 如果界面不支持直接下载
+我可以把 patch 内容直接贴出来，你复制保存为：
+
+nx12post-p0-p1.patch
+然后在你电脑上的仓库根目录执行：
+
+git checkout -b smart-post-p0-p1
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add configurable NC filename modes and runtime switches"
+git push -u origin smart-post-p0-p1
+Testing / checks
+
+✅ tar -czf /workspace/nx12post-patches.tar.gz -C /workspace nx12post-p0-p1.patch nx12post-patches
+
+✅ sha256sum /workspace/nx12post-p0-p1.patch /workspace/nx12post-patches.tar.gz
+
+✅ ls -lh /workspace/nx12post-p0-p1.patch /workspace/nx12post-patches.tar.gz /workspace/nx12post-patches
+
+我操，如何访问workspace
+复制
+你说得对：你没法直接访问我这里的 /workspace。那是当前执行容器内部路径，不是你电脑上的目录，也不是浏览器能直接打开的链接。
+
+最直接的办法：我把 patch 内容直接贴给你。你在自己电脑上新建文件：
+
+nx12post-p0-p1.patch
+把下面整段内容复制进去，然后在你本地仓库根目录执行：
+
+git checkout -b smart-post-p0-p1
+git apply nx12post-p0-p1.patch
+git add README.md smart_post.tcl smart_post_user.tcl
+git commit -m "Add configurable NC filename modes and runtime switches"
+git push -u origin smart-post-p0-p1
+下面就是 patch：
+
+diff --git a/README.md b/README.md
+index 9a4069c..2731bec 100644
+--- a/README.md
++++ b/README.md
+@@ -43,6 +43,8 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
+
+ ## CAM 层级输出规则
+
++当前正式文件名规则：**真实 NC 文件名默认带刀具名后缀**，格式为 `工序名_刀具名.nc` 或 `二级组名_刀具名.nc`。这样可以让无刀库机床操作者从文件名直接识别本文件对应刀具，降低误装刀风险。若现场需要简化命名，可通过 `my_nc_filename_mode` 或 `NX_SMART_POST_FILENAME_MODE` 切换命名策略。
++
+ - 选中 `NC_PROGRAM`：一级组生成文件夹；一级组下独立工序单独输出；二级组输出单一合并 NC。
+ - 选中一级组：只输出该组下的独立工序和二级组合并 NC。
+ - 选中单工序：输出到所属一级组目录，文件名为 `工序名_刀具名.nc`。
+@@ -50,6 +52,13 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
+ - 多层管理组会保留为目录层级，但不会强制把一级组整体合并成一个 NC。
+ - 不默认生成“每个一级程序组一个合并 NC 文件”。
+
++| 用户选择 | 输出目录 | 输出文件名 | 合并规则 |
++| --- | --- | --- | --- |
++| `NC_PROGRAM` | `部件名/一级组/`，多层管理组会作为中间目录保留 | 一级组下独立工序输出 `工序名_刀具名.nc`；二级组输出 `二级组名_刀具名.nc` | 只合并二级组内工序，不生成一级组总合并 NC |
++| 一级组 | `部件名/一级组/` | 该一级组下独立工序输出 `工序名_刀具名.nc`；二级组输出 `二级组名_刀具名.nc` | 只合并二级组内工序 |
++| 单工序 | `部件名/所属一级组/` | `工序名_刀具名.nc` | 不合并，只输出当前工序 |
++| 二级组 | `部件名/所属一级组/` | `二级组名_刀具名.nc` | 合并该二级组内工序，并进行刀具一致性检查 |
++
+ 示例：
+
+ ```text
+@@ -105,6 +114,15 @@ NX “列出输出/信息窗口”显示 NC 代码时，关键依赖主 `ptp_fil
+
+ 不要把这条链路改成“只有勾选列出输出才维护”，也不要试图用 `.lpt` 追加内容替代主 NC 预览文件。
+
++### 临时文件正常现象
++
++| 现象 | 是否正常 | 原因 | 后续处理 |
++| --- | --- | --- | --- |
++| 部件名同名 `.nc` 短暂出现在部件目录或输出目录 | 正常 | 这是 NX 主 `ptp_file_name` 对应的临时汇总 NC/预览文件，供“列出输出/信息窗口”读取 NC 代码 | 后处理结束后由后台清理脚本延迟删除 |
++| 同名 `.ptp` 短暂出现 | 正常 | NX/Post Builder 可能生成与主输出相关的同名预览文件 | 与临时 `.nc` 一起纳入延迟清理 |
++| `.lpt` 短暂出现 | 正常 | `.lpt` 是 listing/commentary 报告文件，不是 NC 代码显示的根来源 | 勾选“列出输出”时通常等待更久再清理 |
++| `%TEMP%/nx_cleanup_latest.log` 出现清理记录 | 正常 | 后台清理脚本会记录计划、延迟和删除结果 | 若文件未删除，可通过该日志判断是否被 NX 或杀软占用 |
++
+ ## 清理策略
+
+ - 勾选“列出输出”：默认等待 `10000 ms` 后清理，保证 NX 有时间读取临时汇总 NC。
+@@ -114,6 +132,7 @@ NX “列出输出/信息窗口”显示 NC 代码时，关键依赖主 `ptp_fil
+ - `.cmd` 内部对目标文件做重试删除；`.lpt` 重试次数较少，`.nc/.ptp` 更保守。
+ - Unix/Linux 下使用后台 `sh -c` 延迟 `rm -f`。
+ - 清理日志：`%TEMP%/nx_cleanup_latest.log`。
++- 排障时可通过 Tcl 全局变量 `my_disable_temp_preview_cleanup=1` 或环境变量 `NX_SMART_POST_KEEP_TEMP=1` 暂停临时预览文件清理。
+
+ 成功日志常见片段：
+
+@@ -131,6 +150,18 @@ DELETED_OR_NOT_EXIST: ...部件名.nc
+ - 短时间去重：环境变量 `NX_SMART_POST_OPENED_OUTPUT_DIR` + 时间戳记录最近一次打开的目录，2 秒内不重复打开。
+ - Windows 下后台执行 VBS 脚本（`wscript.exe //B //Nologo`），检测已有 Explorer 窗口，有则激活（`AppActivate`），无则打开新窗口（`Shell.Open`）。VBS 文件以 GBK 编码写入，确保中文路径正确。
+ - VBS 脚本失败时回退到直接 `exec explorer.exe &`。
++- 如需静默后处理，可通过 Tcl 全局变量 `my_auto_open_output_dir=0` 或环境变量 `NX_SMART_POST_AUTO_OPEN_DIR=0` 关闭自动打开目录。
++
++## 可选功能开关
++
++以下开关默认不改变既有行为，只在现场有特殊需求或排障时启用：
++
++| 开关 | 类型 | 默认值 | 可选值 / 用法 | 作用 |
++| --- | --- | --- | --- | --- |
++| `my_nc_filename_mode` / `NX_SMART_POST_FILENAME_MODE` | Tcl 全局变量 / 环境变量 | `operation_tool` | `operation_tool`、`operation`、`operation_tool_number`、`operation_h_register` | 控制真实 NC 文件名后缀；默认仍为 `工序名_刀具名.nc` / `二级组名_刀具名.nc` |
++| `my_abort_on_merged_group_tool_mismatch` / `NX_SMART_POST_ABORT_ON_TOOL_MISMATCH` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 二级组合并时若检测到刀具指纹不一致，默认只输出警告；启用后立即中止后处理 |
++| `my_disable_temp_preview_cleanup` / `NX_SMART_POST_KEEP_TEMP` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 排障时保留临时汇总 `.nc`、同名 `.ptp` 和 `.lpt`，不启动后台清理 |
++| `my_auto_open_output_dir` / `NX_SMART_POST_AUTO_OPEN_DIR` | Tcl 全局变量 / 环境变量 | `1` | `0`、`off`、`false`、`no` 关闭 | 静默后处理时禁止自动打开/聚焦输出目录 |
+
+ ## 调试
+
+diff --git a/smart_post.tcl b/smart_post.tcl
+index cc5a379..13b09c1 100644
+--- a/smart_post.tcl
++++ b/smart_post.tcl
+@@ -4208,6 +4208,40 @@ proc PB_CMD_smart_file_switch { } {
+         set safe_tool_name [string map [list " " "_" "/" "_" "\\" "_" "*" "_" ":" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"] $mom_tool_name]
+     }
+
++    # NC 文件名模式，默认保持既有行为：工序名_刀具名 / 二级组名_刀具名。
++    # 可通过 Tcl 全局变量 my_nc_filename_mode 或环境变量 NX_SMART_POST_FILENAME_MODE 覆盖：
++    # operation_tool / operation / operation_tool_number / operation_h_register
++    global my_nc_filename_mode mom_tool_number mom_tool_adjust_register mom_tool_length_adjust_register
++    set filename_mode "operation_tool"
++    if { [info exists my_nc_filename_mode] && $my_nc_filename_mode != "" } {
++        set filename_mode $my_nc_filename_mode
++    }
++    if { [info exists ::env(NX_SMART_POST_FILENAME_MODE)] && $::env(NX_SMART_POST_FILENAME_MODE) != "" } {
++        set filename_mode $::env(NX_SMART_POST_FILENAME_MODE)
++    }
++    set filename_suffix ""
++    if { [string match -nocase "operation" $filename_mode] } {
++        set filename_suffix ""
++    } elseif { [string match -nocase "operation_tool_number" $filename_mode] } {
++        if { [info exists mom_tool_number] && $mom_tool_number != "" } {
++            set filename_suffix "_T$mom_tool_number"
++        } elseif { $safe_tool_name != "" } {
++            set filename_suffix "_$safe_tool_name"
++        }
++    } elseif { [string match -nocase "operation_h_register" $filename_mode] } {
++        if { [info exists mom_tool_adjust_register] && $mom_tool_adjust_register != "" } {
++            set filename_suffix "_H$mom_tool_adjust_register"
++        } elseif { [info exists mom_tool_length_adjust_register] && $mom_tool_length_adjust_register != "" } {
++            set filename_suffix "_H$mom_tool_length_adjust_register"
++        } elseif { $safe_tool_name != "" } {
++            set filename_suffix "_$safe_tool_name"
++        }
++    } else {
++        if { $safe_tool_name != "" } {
++            set filename_suffix "_$safe_tool_name"
++        }
++    }
++
+     # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为“管理组”。
+     if { ![PB_CMD_is_cam_root_parent $op_parent] } {
+         set my_group_has_direct_ops($op_parent) 1
+@@ -4237,7 +4271,7 @@ proc PB_CMD_smart_file_switch { } {
+     if { [PB_CMD_is_cam_root_parent $op_parent] } {
+         # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为 工序名_刀具名
+         set parent_dir ""
+-        set file_target "${mom_operation_name}_${safe_tool_name}"
++        set file_target "${mom_operation_name}${filename_suffix}"
+     } elseif { $effective_depth <= 1 } {
+         # 有效 Level 1: 当前有效组内直接工序 -> 管理组路径/有效组/工序名_刀具名.nc
+         set parent_dir ""
+@@ -4248,7 +4282,7 @@ proc PB_CMD_smart_file_switch { } {
+                 set parent_dir [file join $parent_dir $path_group]
+             }
+         }
+-        set file_target "${mom_operation_name}_${safe_tool_name}"
++        set file_target "${mom_operation_name}${filename_suffix}"
+     } else {
+         # 有效 Level 2+: 当前有效组的子组 -> 管理组路径/有效组/二级组名_刀具名.nc，合并子组内工序
+         set parent_dir ""
+@@ -4259,7 +4293,7 @@ proc PB_CMD_smart_file_switch { } {
+                 set parent_dir [file join $parent_dir $path_group]
+             }
+         }
+-        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]_${safe_tool_name}"
++        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]${filename_suffix}"
+         set my_is_merged_op 1
+     }
+
+@@ -4307,8 +4341,22 @@ proc PB_CMD_smart_file_switch { } {
+               MOM_output_literal "(ACTION: MANUAL CHECK REQUIRED - Ensure correct tool is loaded!)"
+
+               # === 自动拦截开关 ===
+-              # 如果您希望发现不一致时自动停止后处理，取消下面一行的注释
+-              # MOM_abort "ERROR: Tool mismatch without tool changer detected!"
++              # 可通过 Tcl 全局变量 my_abort_on_merged_group_tool_mismatch=1 或
++              # 环境变量 NX_SMART_POST_ABORT_ON_TOOL_MISMATCH=1 启用强制中止。
++              global my_abort_on_merged_group_tool_mismatch
++              set abort_on_tool_mismatch 0
++              if { [info exists my_abort_on_merged_group_tool_mismatch] && $my_abort_on_merged_group_tool_mismatch != "" } {
++                  set abort_on_tool_mismatch $my_abort_on_merged_group_tool_mismatch
++              }
++              if { [info exists ::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)] && $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH) != "" } {
++                  set abort_on_tool_mismatch $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)
++              }
++              if { [string match -nocase "1" $abort_on_tool_mismatch]
++                   || [string match -nocase "on" $abort_on_tool_mismatch]
++                   || [string match -nocase "true" $abort_on_tool_mismatch]
++                   || [string match -nocase "yes" $abort_on_tool_mismatch] } {
++                  MOM_abort "ERROR: Tool mismatch without tool changer detected!"
++              }
+           }
+       }
+   }
+@@ -5749,7 +5797,20 @@ proc CLOSE_files { } {
+    }
+    set my_cleanup_delay_sec [expr {int(ceil($my_cleanup_delay_ms_dec / 1000.0))}]
+
+-   if { [llength $unique_files] > 0 } {
++   set keep_temp_preview 0
++   global my_disable_temp_preview_cleanup
++   if { [info exists my_disable_temp_preview_cleanup] && $my_disable_temp_preview_cleanup != "" } {
++       set keep_temp_preview $my_disable_temp_preview_cleanup
++   }
++   if { [info exists ::env(NX_SMART_POST_KEEP_TEMP)] && $::env(NX_SMART_POST_KEEP_TEMP) != "" } {
++       set keep_temp_preview $::env(NX_SMART_POST_KEEP_TEMP)
++   }
++
++   if { [llength $unique_files] > 0
++        && !([string match -nocase "1" $keep_temp_preview]
++             || [string match -nocase "on" $keep_temp_preview]
++             || [string match -nocase "true" $keep_temp_preview]
++             || [string match -nocase "yes" $keep_temp_preview]) } {
+        if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
+            set temp_dir ""
+            catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
+@@ -5848,4 +5909,4 @@ proc CLOSE_files { } {
+            catch { eval exec $delete_cmd & }
+        }
+    }
+-}
+\ No newline at end of file
++}
+diff --git a/smart_post_user.tcl b/smart_post_user.tcl
+index 0f13e60..9f856a9 100644
+--- a/smart_post_user.tcl
++++ b/smart_post_user.tcl
+@@ -234,10 +234,26 @@ proc PB_CMD_user_open_output_dir_debug_log { msg } {
+
+ if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
+     proc PB_CMD_user_open_output_dir { } {
+-        global my_out_dir tcl_platform
++        global my_out_dir tcl_platform my_auto_open_output_dir
+
+         # PB_CMD_user_open_output_dir_debug_log "=== ENTER PB_CMD_user_open_output_dir ==="
+
++        # 可通过 Tcl 全局变量 my_auto_open_output_dir=0 或环境变量
++        # NX_SMART_POST_AUTO_OPEN_DIR=0 关闭自动打开输出目录；默认保持打开。
++        set auto_open_dir 1
++        if { [info exists my_auto_open_output_dir] && $my_auto_open_output_dir != "" } {
++            set auto_open_dir $my_auto_open_output_dir
++        }
++        if { [info exists ::env(NX_SMART_POST_AUTO_OPEN_DIR)] && $::env(NX_SMART_POST_AUTO_OPEN_DIR) != "" } {
++            set auto_open_dir $::env(NX_SMART_POST_AUTO_OPEN_DIR)
++        }
++        if { [string match -nocase "0" $auto_open_dir]
++             || [string match -nocase "off" $auto_open_dir]
++             || [string match -nocase "false" $auto_open_dir]
++             || [string match -nocase "no" $auto_open_dir] } {
++            return
++        }
++
+         set open_dir ""
+         if { [info exists my_out_dir] && $my_out_dir != "" } {
+             catch { set open_dir [file normalize $my_out_dir] }
+@@ -248,7 +264,7 @@ if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
+         }
+         # PB_CMD_user_open_output_dir_debug_log "open_dir=$open_dir"
+
+-        # 批量后处理只最后一次打开目录（NW_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
++        # 批量后处理只最后一次打开目录（NX_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
+         set is_batch_skip 0
+         if { [info exists ::env(NX_SMART_POST_BATCH_INDEX)] && [info exists ::env(NX_SMART_POST_BATCH_TOTAL)] } {
+             set batch_idx $::env(NX_SMART_POST_BATCH_INDEX)
+保存后可以先检查 patch 是否能应用：
+
+git apply --check nx12post-p0-p1.patch
+如果没输出，就说明可以应用：
+
+git apply nx12post-p0-p1.patch
+Testing / checks
+
+✅ sed -n '1,260p' /workspace/nx12post-p0-p1.patch

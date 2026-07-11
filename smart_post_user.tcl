@@ -234,9 +234,25 @@ proc PB_CMD_user_open_output_dir_debug_log { msg } {
 
 if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
     proc PB_CMD_user_open_output_dir { } {
-        global my_out_dir tcl_platform
+        global my_out_dir tcl_platform my_auto_open_output_dir
 
         # PB_CMD_user_open_output_dir_debug_log "=== ENTER PB_CMD_user_open_output_dir ==="
+
+        # 可通过 Tcl 全局变量 my_auto_open_output_dir=0 或环境变量
+        # NX_SMART_POST_AUTO_OPEN_DIR=0 关闭自动打开输出目录；默认保持打开。
+        set auto_open_dir 1
+        if { [info exists my_auto_open_output_dir] && $my_auto_open_output_dir != "" } {
+            set auto_open_dir $my_auto_open_output_dir
+        }
+        if { [info exists ::env(NX_SMART_POST_AUTO_OPEN_DIR)] && $::env(NX_SMART_POST_AUTO_OPEN_DIR) != "" } {
+            set auto_open_dir $::env(NX_SMART_POST_AUTO_OPEN_DIR)
+        }
+        if { [string match -nocase "0" $auto_open_dir]
+             || [string match -nocase "off" $auto_open_dir]
+             || [string match -nocase "false" $auto_open_dir]
+             || [string match -nocase "no" $auto_open_dir] } {
+            return
+        }
 
         set open_dir ""
         if { [info exists my_out_dir] && $my_out_dir != "" } {
@@ -248,7 +264,7 @@ if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
         }
         # PB_CMD_user_open_output_dir_debug_log "open_dir=$open_dir"
 
-        # 批量后处理只最后一次打开目录（NW_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
+        # 批量后处理只最后一次打开目录（NX_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
         set is_batch_skip 0
         if { [info exists ::env(NX_SMART_POST_BATCH_INDEX)] && [info exists ::env(NX_SMART_POST_BATCH_TOTAL)] } {
             set batch_idx $::env(NX_SMART_POST_BATCH_INDEX)

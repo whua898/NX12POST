@@ -1,0 +1,237 @@
+diff --git a/README.md b/README.md
+index 9a4069c..2731bec 100644
+--- a/README.md
++++ b/README.md
+@@ -43,6 +43,8 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
+
+ ## CAM 层级输出规则
+
++当前正式文件名规则：**真实 NC 文件名默认带刀具名后缀**，格式为 `工序名_刀具名.nc` 或 `二级组名_刀具名.nc`。这样可以让无刀库机床操作者从文件名直接识别本文件对应刀具，降低误装刀风险。若现场需要简化命名，可通过 `my_nc_filename_mode` 或 `NX_SMART_POST_FILENAME_MODE` 切换命名策略。
++
+ - 选中 `NC_PROGRAM`：一级组生成文件夹；一级组下独立工序单独输出；二级组输出单一合并 NC。
+ - 选中一级组：只输出该组下的独立工序和二级组合并 NC。
+ - 选中单工序：输出到所属一级组目录，文件名为 `工序名_刀具名.nc`。
+@@ -50,6 +52,13 @@ POST_NAME = os.environ.get("NX_SMART_POST_NAME", DEFAULT_POST_NAME)
+ - 多层管理组会保留为目录层级，但不会强制把一级组整体合并成一个 NC。
+ - 不默认生成“每个一级程序组一个合并 NC 文件”。
+
++| 用户选择 | 输出目录 | 输出文件名 | 合并规则 |
++| --- | --- | --- | --- |
++| `NC_PROGRAM` | `部件名/一级组/`，多层管理组会作为中间目录保留 | 一级组下独立工序输出 `工序名_刀具名.nc`；二级组输出 `二级组名_刀具名.nc` | 只合并二级组内工序，不生成一级组总合并 NC |
++| 一级组 | `部件名/一级组/` | 该一级组下独立工序输出 `工序名_刀具名.nc`；二级组输出 `二级组名_刀具名.nc` | 只合并二级组内工序 |
++| 单工序 | `部件名/所属一级组/` | `工序名_刀具名.nc` | 不合并，只输出当前工序 |
++| 二级组 | `部件名/所属一级组/` | `二级组名_刀具名.nc` | 合并该二级组内工序，并进行刀具一致性检查 |
++
+ 示例：
+
+ ```text
+@@ -105,6 +114,15 @@ NX “列出输出/信息窗口”显示 NC 代码时，关键依赖主 `ptp_fil
+
+ 不要把这条链路改成“只有勾选列出输出才维护”，也不要试图用 `.lpt` 追加内容替代主 NC 预览文件。
+
++### 临时文件正常现象
++
++| 现象 | 是否正常 | 原因 | 后续处理 |
++| --- | --- | --- | --- |
++| 部件名同名 `.nc` 短暂出现在部件目录或输出目录 | 正常 | 这是 NX 主 `ptp_file_name` 对应的临时汇总 NC/预览文件，供“列出输出/信息窗口”读取 NC 代码 | 后处理结束后由后台清理脚本延迟删除 |
++| 同名 `.ptp` 短暂出现 | 正常 | NX/Post Builder 可能生成与主输出相关的同名预览文件 | 与临时 `.nc` 一起纳入延迟清理 |
++| `.lpt` 短暂出现 | 正常 | `.lpt` 是 listing/commentary 报告文件，不是 NC 代码显示的根来源 | 勾选“列出输出”时通常等待更久再清理 |
++| `%TEMP%/nx_cleanup_latest.log` 出现清理记录 | 正常 | 后台清理脚本会记录计划、延迟和删除结果 | 若文件未删除，可通过该日志判断是否被 NX 或杀软占用 |
++
+ ## 清理策略
+
+ - 勾选“列出输出”：默认等待 `10000 ms` 后清理，保证 NX 有时间读取临时汇总 NC。
+@@ -114,6 +132,7 @@ NX “列出输出/信息窗口”显示 NC 代码时，关键依赖主 `ptp_fil
+ - `.cmd` 内部对目标文件做重试删除；`.lpt` 重试次数较少，`.nc/.ptp` 更保守。
+ - Unix/Linux 下使用后台 `sh -c` 延迟 `rm -f`。
+ - 清理日志：`%TEMP%/nx_cleanup_latest.log`。
++- 排障时可通过 Tcl 全局变量 `my_disable_temp_preview_cleanup=1` 或环境变量 `NX_SMART_POST_KEEP_TEMP=1` 暂停临时预览文件清理。
+
+ 成功日志常见片段：
+
+@@ -131,6 +150,18 @@ DELETED_OR_NOT_EXIST: ...部件名.nc
+ - 短时间去重：环境变量 `NX_SMART_POST_OPENED_OUTPUT_DIR` + 时间戳记录最近一次打开的目录，2 秒内不重复打开。
+ - Windows 下后台执行 VBS 脚本（`wscript.exe //B //Nologo`），检测已有 Explorer 窗口，有则激活（`AppActivate`），无则打开新窗口（`Shell.Open`）。VBS 文件以 GBK 编码写入，确保中文路径正确。
+ - VBS 脚本失败时回退到直接 `exec explorer.exe &`。
++- 如需静默后处理，可通过 Tcl 全局变量 `my_auto_open_output_dir=0` 或环境变量 `NX_SMART_POST_AUTO_OPEN_DIR=0` 关闭自动打开目录。
++
++## 可选功能开关
++
++以下开关默认不改变既有行为，只在现场有特殊需求或排障时启用：
++
++| 开关 | 类型 | 默认值 | 可选值 / 用法 | 作用 |
++| --- | --- | --- | --- | --- |
++| `my_nc_filename_mode` / `NX_SMART_POST_FILENAME_MODE` | Tcl 全局变量 / 环境变量 | `operation_tool` | `operation_tool`、`operation`、`operation_tool_number`、`operation_h_register` | 控制真实 NC 文件名后缀；默认仍为 `工序名_刀具名.nc` / `二级组名_刀具名.nc` |
++| `my_abort_on_merged_group_tool_mismatch` / `NX_SMART_POST_ABORT_ON_TOOL_MISMATCH` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 二级组合并时若检测到刀具指纹不一致，默认只输出警告；启用后立即中止后处理 |
++| `my_disable_temp_preview_cleanup` / `NX_SMART_POST_KEEP_TEMP` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 排障时保留临时汇总 `.nc`、同名 `.ptp` 和 `.lpt`，不启动后台清理 |
++| `my_auto_open_output_dir` / `NX_SMART_POST_AUTO_OPEN_DIR` | Tcl 全局变量 / 环境变量 | `1` | `0`、`off`、`false`、`no` 关闭 | 静默后处理时禁止自动打开/聚焦输出目录 |
+
+ ## 调试
+
+diff --git a/smart_post.tcl b/smart_post.tcl
+index cc5a379..13b09c1 100644
+--- a/smart_post.tcl
++++ b/smart_post.tcl
+@@ -4208,6 +4208,40 @@ proc PB_CMD_smart_file_switch { } {
+         set safe_tool_name [string map [list " " "_" "/" "_" "\\" "_" "*" "_" ":" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"] $mom_tool_name]
+     }
+
++    # NC 文件名模式，默认保持既有行为：工序名_刀具名 / 二级组名_刀具名。
++    # 可通过 Tcl 全局变量 my_nc_filename_mode 或环境变量 NX_SMART_POST_FILENAME_MODE 覆盖：
++    # operation_tool / operation / operation_tool_number / operation_h_register
++    global my_nc_filename_mode mom_tool_number mom_tool_adjust_register mom_tool_length_adjust_register
++    set filename_mode "operation_tool"
++    if { [info exists my_nc_filename_mode] && $my_nc_filename_mode != "" } {
++        set filename_mode $my_nc_filename_mode
++    }
++    if { [info exists ::env(NX_SMART_POST_FILENAME_MODE)] && $::env(NX_SMART_POST_FILENAME_MODE) != "" } {
++        set filename_mode $::env(NX_SMART_POST_FILENAME_MODE)
++    }
++    set filename_suffix ""
++    if { [string match -nocase "operation" $filename_mode] } {
++        set filename_suffix ""
++    } elseif { [string match -nocase "operation_tool_number" $filename_mode] } {
++        if { [info exists mom_tool_number] && $mom_tool_number != "" } {
++            set filename_suffix "_T$mom_tool_number"
++        } elseif { $safe_tool_name != "" } {
++            set filename_suffix "_$safe_tool_name"
++        }
++    } elseif { [string match -nocase "operation_h_register" $filename_mode] } {
++        if { [info exists mom_tool_adjust_register] && $mom_tool_adjust_register != "" } {
++            set filename_suffix "_H$mom_tool_adjust_register"
++        } elseif { [info exists mom_tool_length_adjust_register] && $mom_tool_length_adjust_register != "" } {
++            set filename_suffix "_H$mom_tool_length_adjust_register"
++        } elseif { $safe_tool_name != "" } {
++            set filename_suffix "_$safe_tool_name"
++        }
++    } else {
++        if { $safe_tool_name != "" } {
++            set filename_suffix "_$safe_tool_name"
++        }
++    }
++
+     # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为“管理组”。
+     if { ![PB_CMD_is_cam_root_parent $op_parent] } {
+         set my_group_has_direct_ops($op_parent) 1
+@@ -4237,7 +4271,7 @@ proc PB_CMD_smart_file_switch { } {
+     if { [PB_CMD_is_cam_root_parent $op_parent] } {
+         # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为 工序名_刀具名
+         set parent_dir ""
+-        set file_target "${mom_operation_name}_${safe_tool_name}"
++        set file_target "${mom_operation_name}${filename_suffix}"
+     } elseif { $effective_depth <= 1 } {
+         # 有效 Level 1: 当前有效组内直接工序 -> 管理组路径/有效组/工序名_刀具名.nc
+         set parent_dir ""
+@@ -4248,7 +4282,7 @@ proc PB_CMD_smart_file_switch { } {
+                 set parent_dir [file join $parent_dir $path_group]
+             }
+         }
+-        set file_target "${mom_operation_name}_${safe_tool_name}"
++        set file_target "${mom_operation_name}${filename_suffix}"
+     } else {
+         # 有效 Level 2+: 当前有效组的子组 -> 管理组路径/有效组/二级组名_刀具名.nc，合并子组内工序
+         set parent_dir ""
+@@ -4259,7 +4293,7 @@ proc PB_CMD_smart_file_switch { } {
+                 set parent_dir [file join $parent_dir $path_group]
+             }
+         }
+-        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]_${safe_tool_name}"
++        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]${filename_suffix}"
+         set my_is_merged_op 1
+     }
+
+@@ -4307,8 +4341,22 @@ proc PB_CMD_smart_file_switch { } {
+               MOM_output_literal "(ACTION: MANUAL CHECK REQUIRED - Ensure correct tool is loaded!)"
+
+               # === 自动拦截开关 ===
+-              # 如果您希望发现不一致时自动停止后处理，取消下面一行的注释
+-              # MOM_abort "ERROR: Tool mismatch without tool changer detected!"
++              # 可通过 Tcl 全局变量 my_abort_on_merged_group_tool_mismatch=1 或
++              # 环境变量 NX_SMART_POST_ABORT_ON_TOOL_MISMATCH=1 启用强制中止。
++              global my_abort_on_merged_group_tool_mismatch
++              set abort_on_tool_mismatch 0
++              if { [info exists my_abort_on_merged_group_tool_mismatch] && $my_abort_on_merged_group_tool_mismatch != "" } {
++                  set abort_on_tool_mismatch $my_abort_on_merged_group_tool_mismatch
++              }
++              if { [info exists ::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)] && $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH) != "" } {
++                  set abort_on_tool_mismatch $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)
++              }
++              if { [string match -nocase "1" $abort_on_tool_mismatch]
++                   || [string match -nocase "on" $abort_on_tool_mismatch]
++                   || [string match -nocase "true" $abort_on_tool_mismatch]
++                   || [string match -nocase "yes" $abort_on_tool_mismatch] } {
++                  MOM_abort "ERROR: Tool mismatch without tool changer detected!"
++              }
+           }
+       }
+   }
+@@ -5749,7 +5797,20 @@ proc CLOSE_files { } {
+    }
+    set my_cleanup_delay_sec [expr {int(ceil($my_cleanup_delay_ms_dec / 1000.0))}]
+
+-   if { [llength $unique_files] > 0 } {
++   set keep_temp_preview 0
++   global my_disable_temp_preview_cleanup
++   if { [info exists my_disable_temp_preview_cleanup] && $my_disable_temp_preview_cleanup != "" } {
++       set keep_temp_preview $my_disable_temp_preview_cleanup
++   }
++   if { [info exists ::env(NX_SMART_POST_KEEP_TEMP)] && $::env(NX_SMART_POST_KEEP_TEMP) != "" } {
++       set keep_temp_preview $::env(NX_SMART_POST_KEEP_TEMP)
++   }
++
++   if { [llength $unique_files] > 0
++        && !([string match -nocase "1" $keep_temp_preview]
++             || [string match -nocase "on" $keep_temp_preview]
++             || [string match -nocase "true" $keep_temp_preview]
++             || [string match -nocase "yes" $keep_temp_preview]) } {
+        if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
+            set temp_dir ""
+            catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
+@@ -5848,4 +5909,4 @@ proc CLOSE_files { } {
+            catch { eval exec $delete_cmd & }
+        }
+    }
+-}
+\ No newline at end of file
++}
+diff --git a/smart_post_user.tcl b/smart_post_user.tcl
+index 0f13e60..9f856a9 100644
+--- a/smart_post_user.tcl
++++ b/smart_post_user.tcl
+@@ -234,10 +234,26 @@ proc PB_CMD_user_open_output_dir_debug_log { msg } {
+
+ if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
+     proc PB_CMD_user_open_output_dir { } {
+-        global my_out_dir tcl_platform
++        global my_out_dir tcl_platform my_auto_open_output_dir
+
+         # PB_CMD_user_open_output_dir_debug_log "=== ENTER PB_CMD_user_open_output_dir ==="
+
++        # 可通过 Tcl 全局变量 my_auto_open_output_dir=0 或环境变量
++        # NX_SMART_POST_AUTO_OPEN_DIR=0 关闭自动打开输出目录；默认保持打开。
++        set auto_open_dir 1
++        if { [info exists my_auto_open_output_dir] && $my_auto_open_output_dir != "" } {
++            set auto_open_dir $my_auto_open_output_dir
++        }
++        if { [info exists ::env(NX_SMART_POST_AUTO_OPEN_DIR)] && $::env(NX_SMART_POST_AUTO_OPEN_DIR) != "" } {
++            set auto_open_dir $::env(NX_SMART_POST_AUTO_OPEN_DIR)
++        }
++        if { [string match -nocase "0" $auto_open_dir]
++             || [string match -nocase "off" $auto_open_dir]
++             || [string match -nocase "false" $auto_open_dir]
++             || [string match -nocase "no" $auto_open_dir] } {
++            return
++        }
++
+         set open_dir ""
+         if { [info exists my_out_dir] && $my_out_dir != "" } {
+             catch { set open_dir [file normalize $my_out_dir] }
+@@ -248,7 +264,7 @@ if { ![llength [info commands PB_CMD_user_open_output_dir]] } {
+         }
+         # PB_CMD_user_open_output_dir_debug_log "open_dir=$open_dir"
+
+-        # 批量后处理只最后一次打开目录（NW_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
++        # 批量后处理只最后一次打开目录（NX_SMART_POST_BATCH_INDEX/TOTAL 由 Python Journal 设置）
+         set is_batch_skip 0
+         if { [info exists ::env(NX_SMART_POST_BATCH_INDEX)] && [info exists ::env(NX_SMART_POST_BATCH_TOTAL)] } {
+             set batch_idx $::env(NX_SMART_POST_BATCH_INDEX)

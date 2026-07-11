@@ -4203,12 +4203,46 @@ proc PB_CMD_smart_file_switch { } {
     set parent_dir ""
     set my_is_merged_op 0
 
-    set safe_tool_name ""
+    set safe_tool_name “”
     if { [info exists mom_tool_name] } {
-        set safe_tool_name [string map [list " " "_" "/" "_" "\\" "_" "*" "_" ":" "_" "?" "_" "<" "_" ">" "_" "|" "_" "\"" "_"] $mom_tool_name]
+        set safe_tool_name [string map [list “ “ “_” “/” “_” “\\” “_” “*” “_” “:” “_” “?” “_” “<” “_” “>” “_” “|” “_” “\”” “_”] $mom_tool_name]
     }
 
-    # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为“管理组”。
+    # NC 文件名模式，默认保持既有行为：工序名_刀具名 / 二级组名_刀具名。
+    # 可通过 Tcl 全局变量 my_nc_filename_mode 或环境变量 NX_SMART_POST_FILENAME_MODE 覆盖：
+    # operation_tool / operation / operation_tool_number / operation_h_register
+    global my_nc_filename_mode mom_tool_number mom_tool_adjust_register mom_tool_length_adjust_register
+    set filename_mode “operation_tool”
+    if { [info exists my_nc_filename_mode] && $my_nc_filename_mode != “” } {
+        set filename_mode $my_nc_filename_mode
+    }
+    if { [info exists ::env(NX_SMART_POST_FILENAME_MODE)] && $::env(NX_SMART_POST_FILENAME_MODE) != “” } {
+        set filename_mode $::env(NX_SMART_POST_FILENAME_MODE)
+    }
+    set filename_suffix “”
+    if { [string match -nocase “operation” $filename_mode] } {
+        set filename_suffix “”
+    } elseif { [string match -nocase “operation_tool_number” $filename_mode] } {
+        if { [info exists mom_tool_number] && $mom_tool_number != “” } {
+            set filename_suffix “_T$mom_tool_number”
+        } elseif { $safe_tool_name != “” } {
+            set filename_suffix “_$safe_tool_name”
+        }
+    } elseif { [string match -nocase “operation_h_register” $filename_mode] } {
+        if { [info exists mom_tool_adjust_register] && $mom_tool_adjust_register != “” } {
+            set filename_suffix “_H$mom_tool_adjust_register”
+        } elseif { [info exists mom_tool_length_adjust_register] && $mom_tool_length_adjust_register != “” } {
+            set filename_suffix “_H$mom_tool_length_adjust_register”
+        } elseif { $safe_tool_name != “” } {
+            set filename_suffix “_$safe_tool_name”
+        }
+    } else {
+        if { $safe_tool_name != “” } {
+            set filename_suffix “_$safe_tool_name”
+        }
+    }
+
+    # 记录任意组是否出现过直接工序。没有直接工序的前置组可作为”管理组”。
     if { ![PB_CMD_is_cam_root_parent $op_parent] } {
         set my_group_has_direct_ops($op_parent) 1
         if { [llength $route_stack] > 0 } {
@@ -4237,7 +4271,7 @@ proc PB_CMD_smart_file_switch { } {
     if { [PB_CMD_is_cam_root_parent $op_parent] } {
         # Level 0: 直接在根目录下的工序 -> 不建文件夹，文件名为 工序名_刀具名
         set parent_dir ""
-        set file_target "${mom_operation_name}_${safe_tool_name}"
+        set file_target "${mom_operation_name}${filename_suffix}"
     } elseif { $effective_depth <= 1 } {
         # 有效 Level 1: 当前有效组内直接工序 -> 管理组路径/有效组/工序名_刀具名.nc
         set parent_dir ""
@@ -4248,7 +4282,7 @@ proc PB_CMD_smart_file_switch { } {
                 set parent_dir [file join $parent_dir $path_group]
             }
         }
-        set file_target "${mom_operation_name}_${safe_tool_name}"
+        set file_target "${mom_operation_name}${filename_suffix}"
     } else {
         # 有效 Level 2+: 当前有效组的子组 -> 管理组路径/有效组/二级组名_刀具名.nc，合并子组内工序
         set parent_dir ""
@@ -4259,7 +4293,7 @@ proc PB_CMD_smart_file_switch { } {
                 set parent_dir [file join $parent_dir $path_group]
             }
         }
-        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]_${safe_tool_name}"
+        set file_target "[lindex $route_stack [expr {$effective_base + 1}]]${filename_suffix}"
         set my_is_merged_op 1
     }
 
@@ -4307,8 +4341,22 @@ proc PB_CMD_smart_file_switch { } {
               MOM_output_literal "(ACTION: MANUAL CHECK REQUIRED - Ensure correct tool is loaded!)"
 
               # === 自动拦截开关 ===
-              # 如果您希望发现不一致时自动停止后处理，取消下面一行的注释
-              # MOM_abort "ERROR: Tool mismatch without tool changer detected!"
+              # 可通过 Tcl 全局变量 my_abort_on_merged_group_tool_mismatch=1 或
+              # 环境变量 NX_SMART_POST_ABORT_ON_TOOL_MISMATCH=1 启用强制中止。
+              global my_abort_on_merged_group_tool_mismatch
+              set abort_on_tool_mismatch 0
+              if { [info exists my_abort_on_merged_group_tool_mismatch] && $my_abort_on_merged_group_tool_mismatch != "" } {
+                  set abort_on_tool_mismatch $my_abort_on_merged_group_tool_mismatch
+              }
+              if { [info exists ::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)] && $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH) != "" } {
+                  set abort_on_tool_mismatch $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)
+              }
+              if { [string match -nocase "1" $abort_on_tool_mismatch]
+                   || [string match -nocase "on" $abort_on_tool_mismatch]
+                   || [string match -nocase "true" $abort_on_tool_mismatch]
+                   || [string match -nocase "yes" $abort_on_tool_mismatch] } {
+                  MOM_abort "ERROR: Tool mismatch without tool changer detected!"
+              }
           }
       }
   }
@@ -5749,7 +5797,20 @@ proc CLOSE_files { } {
    }
    set my_cleanup_delay_sec [expr {int(ceil($my_cleanup_delay_ms_dec / 1000.0))}]
 
-   if { [llength $unique_files] > 0 } {
+   set keep_temp_preview 0
+   global my_disable_temp_preview_cleanup
+   if { [info exists my_disable_temp_preview_cleanup] && $my_disable_temp_preview_cleanup != "" } {
+       set keep_temp_preview $my_disable_temp_preview_cleanup
+   }
+   if { [info exists ::env(NX_SMART_POST_KEEP_TEMP)] && $::env(NX_SMART_POST_KEEP_TEMP) != "" } {
+       set keep_temp_preview $::env(NX_SMART_POST_KEEP_TEMP)
+   }
+
+   if { [llength $unique_files] > 0
+        && !([string match -nocase "1" $keep_temp_preview]
+             || [string match -nocase "on" $keep_temp_preview]
+             || [string match -nocase "true" $keep_temp_preview]
+             || [string match -nocase "yes" $keep_temp_preview]) } {
        if { [info exists tcl_platform(platform)] && $tcl_platform(platform) == "windows" } {
            set temp_dir ""
            catch { set temp_dir [MOM_ask_env_var UGII_TMP_DIR] }
