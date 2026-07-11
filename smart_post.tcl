@@ -4232,14 +4232,8 @@ proc PB_CMD_smart_file_switch { } {
     # NC 文件名模式，默认保持既有行为：工序名_刀具名 / 二级组名_刀具名。
     # 可通过 Tcl 全局变量 my_nc_filename_mode 或环境变量 NX_SMART_POST_FILENAME_MODE 覆盖：
     # operation_tool / operation / operation_tool_number / operation_h_register
-    global my_nc_filename_mode mom_tool_number mom_tool_adjust_register mom_tool_length_adjust_register
-    set filename_mode "operation_tool"
-    if { [info exists my_nc_filename_mode] && $my_nc_filename_mode != "" } {
-        set filename_mode $my_nc_filename_mode
-    }
-    if { [info exists ::env(NX_SMART_POST_FILENAME_MODE)] && $::env(NX_SMART_POST_FILENAME_MODE) != "" } {
-        set filename_mode $::env(NX_SMART_POST_FILENAME_MODE)
-    }
+    global mom_tool_number mom_tool_adjust_register mom_tool_length_adjust_register
+    set filename_mode [PB_CMD_user_filename_mode_default]
     set filename_suffix ""
     if { [string match -nocase "operation" $filename_mode] } {
         set filename_suffix ""
@@ -4364,14 +4358,7 @@ proc PB_CMD_smart_file_switch { } {
               # === 自动拦截开关 ===
               # 可通过 Tcl 全局变量 my_abort_on_merged_group_tool_mismatch=1 或
               # 环境变量 NX_SMART_POST_ABORT_ON_TOOL_MISMATCH=1 启用强制中止。
-              global my_abort_on_merged_group_tool_mismatch
-              set abort_on_tool_mismatch 0
-              if { [info exists my_abort_on_merged_group_tool_mismatch] && $my_abort_on_merged_group_tool_mismatch != "" } {
-                  set abort_on_tool_mismatch $my_abort_on_merged_group_tool_mismatch
-              }
-              if { [info exists ::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)] && $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH) != "" } {
-                  set abort_on_tool_mismatch $::env(NX_SMART_POST_ABORT_ON_TOOL_MISMATCH)
-              }
+              set abort_on_tool_mismatch [PB_CMD_user_abort_on_mismatch_default]
               if { [string match -nocase "1" $abort_on_tool_mismatch]
                    || [string match -nocase "on" $abort_on_tool_mismatch]
                    || [string match -nocase "true" $abort_on_tool_mismatch]
@@ -5819,13 +5806,7 @@ proc CLOSE_files { } {
    set my_cleanup_delay_sec [expr {int(ceil($my_cleanup_delay_ms_dec / 1000.0))}]
 
    set keep_temp_preview 0
-   global my_disable_temp_preview_cleanup
-   if { [info exists my_disable_temp_preview_cleanup] && $my_disable_temp_preview_cleanup != "" } {
-       set keep_temp_preview $my_disable_temp_preview_cleanup
-   }
-   if { [info exists ::env(NX_SMART_POST_KEEP_TEMP)] && $::env(NX_SMART_POST_KEEP_TEMP) != "" } {
-       set keep_temp_preview $::env(NX_SMART_POST_KEEP_TEMP)
-   }
+   set keep_temp_preview [PB_CMD_user_disable_temp_cleanup_default]
 
    if { [llength $unique_files] > 0
         && !([string match -nocase "1" $keep_temp_preview]

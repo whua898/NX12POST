@@ -5,7 +5,48 @@
 # 此文件由 NX 后处理引擎在加载主 TCL 文件时自动 source（读取）。
 # 放在此文件中的代码是【全局代码】，并且【永远不会】被 UG NX 后处理构造器
 # (Post Builder) 覆盖或删除。
-# ==============================================================================
+# ==============================================================================
+
+# ============================================================
+# Unified settings resolver: Tcl global (my_xxx) wins,
+# then NX_SMART_POST_XXX env, then hard-coded default.
+# Keeps legacy procs working that still use direct
+# 'global my_xxx; info exists my_xxx' patterns.
+# ============================================================
+proc PB_CMD_user_get_setting { name value_if_missing } {
+    if { [info exists ::my_user_settings($name)] && $::my_user_settings($name) ne "" } {
+        return $::my_user_settings($name)
+    }
+    if { [info exists ::env(NX_SMART_POST_[string toupper $name])] } {
+        return $::env(NX_SMART_POST_[string toupper $name])
+    }
+    return $value_if_missing
+}
+
+proc PB_CMD_user_set_setting { name value } {
+    set ::my_user_settings($name) $value
+}
+
+# ============================================================
+# P1 user-tunable settings (conservative migration).
+# Each is read by the helper below, with its hard-coded default.
+# Legacy code that still does 'global my_xxx; ... info exists my_xxx'
+# keeps working unchanged - the helper only NEW code paths.
+# ============================================================
+
+array set ::my_user_settings {
+    filename_mode                     operation_tool
+    abort_on_merged_group_tool_mismatch  0
+    disable_temp_preview_cleanup     0
+    auto_open_output_dir             1
+}
+
+# Convenience aliases used by P1 code paths.
+proc PB_CMD_user_filename_mode_default      {} { return [PB_CMD_user_get_setting filename_mode operation_tool] }
+proc PB_CMD_user_abort_on_mismatch_default  {} { return [PB_CMD_user_get_setting abort_on_merged_group_tool_mismatch 0] }
+proc PB_CMD_user_disable_temp_cleanup_default {} { return [PB_CMD_user_get_setting disable_temp_preview_cleanup 0] }
+proc PB_CMD_user_auto_open_dir_default      {} { return [PB_CMD_user_get_setting auto_open_output_dir 1] }
+
 
 # 确保 NX 引擎在初始化时能扫描到 MOM_end_of_group 事件，从而触发它。
 # 这是解决 NX 漏发组结束事件的关键占位符。
