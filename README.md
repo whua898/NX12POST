@@ -163,6 +163,12 @@ DELETED_OR_NOT_EXIST: ...部件名.nc
 | `my_disable_temp_preview_cleanup` / `NX_SMART_POST_KEEP_TEMP` | Tcl 全局变量 / 环境变量 | `0` | `1`、`on`、`true`、`yes` 启用 | 排障时保留临时汇总 `.nc`、同名 `.ptp` 和 `.lpt`，不启动后台清理 |
 | `my_auto_open_output_dir` / `NX_SMART_POST_AUTO_OPEN_DIR` | Tcl 全局变量 / 环境变量 | `1` | `0`、`off`、`false`、`no` 关闭 | 静默后处理时禁止自动打开/聚焦输出目录 |
 
+## 注册开关
+
+| 开关 | 默认值 | 作用 |
+| --- | --- | --- |
+| `NX_SMART_POST_NO_REGISTER` | `0` | 置 `1` 时，`get_cam_hierarchy_and_post.py` 跳过自动改写 `$UGII_CAM_POST_DIR/template_post.dat`，仅解析不插入。用于权限受限、多 post 共享 template_post.dat、或只想本地复现注册行为的场景 |
+
 ## 调试
 
 智能路由 debug 默认关闭。需要排障时可设置：

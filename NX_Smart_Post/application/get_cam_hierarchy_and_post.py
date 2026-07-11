@@ -102,6 +102,41 @@ def _safe_name(value):
             return u""
 
 
+def _sanitize_file_component(value, replace=u"_", max_len=255):
+    """Remove characters illegal in Windows file names from a single path component.
+
+    Keeps CJK characters, letters, digits, '_' and '-'. Replaces the classic
+    Windows-illegal set ( / \\ : * ? " < > | ) and control characters, then
+    strips trailing dots/spaces and truncates to ``max_len``.
+    """
+    text = _to_text(value)
+    if not text:
+        return u""
+    illegal = u"/\\:*?\"<>|"
+    trans = {ord(ch): replace for ch in illegal}
+    trans.update({ord(ch): None for ch in range(0, 32)})
+    cleaned = text.translate(trans)
+    cleaned = cleaned.rstrip(u". ")
+    if max_len and len(cleaned) > max_len:
+        cleaned = cleaned[:max_len]
+    return cleaned
+
+
+def _apply_env(env_map):
+    """Update os.environ with env_map and return a callback that restores the
+    previous values (or deletes keys that were not set before). Use with
+    try/finally to avoid leaking environment variables across NX sessions."""
+    old = {k: os.environ.get(k) for k in env_map}
+    os.environ.update(env_map)
+    def restore():
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return restore
+
+
 def _obj_name(obj):
     for attr in ("Name", "name"):
         try:
@@ -339,6 +374,9 @@ def _template_post_paths(session, post_name):
 
 
 def _ensure_template_post_registration(session, post_name, fallback_tcl_path, fallback_def_path, log):
+    if os.environ.get("NX_SMART_POST_NO_REGISTER", "") == "1":
+        log.write("NX_SMART_POST_NO_REGISTER=1: skip writing template_post.dat for {0}".format(post_name))
+        return True
     cam_post_dir, template_path, standard_tcl_path, standard_def_path = _template_post_paths(session, post_name)
     if not cam_post_dir:
         log.write("UGII_CAM_POST_DIR is empty; cannot update template_post.dat automatically.")
@@ -919,22 +957,25 @@ def main():
     _write_hierarchy_cache(cache_path, target, records, log)
 
     part_base_name = _part_base_name(work_part)
+    part_base_name = _sanitize_file_component(part_base_name) if part_base_name else part_base_name
+    restore_env = _apply_env({
+        "NX_SMART_POST_PART_NAME": part_base_name or None,
+        "NX_SMART_POST_PART_NAME_UTF8_HEX": _utf8_hex(part_base_name) if part_base_name else None,
+        "NX_SMART_POST_USE_CACHE": "1",
+    })
     if part_base_name:
-        os.environ["NX_SMART_POST_PART_NAME"] = part_base_name
-        os.environ["NX_SMART_POST_PART_NAME_UTF8_HEX"] = _utf8_hex(part_base_name)
         log.write("Part output folder name: {0}".format(part_base_name))
 
     target_name = _target_display_name(target) or "CAM_ROOT"
     output_path = os.path.join(output_dir, target_name + OUTPUT_EXT)
 
-    # Tell the Tcl post this hierarchy cache belongs to the current automatic run.
-    # A normal NX postprocess command will not set this variable, so stale cache files
-    # are ignored and the post falls back to native MOM group events.
-    os.environ["NX_SMART_POST_USE_CACHE"] = "1"
-    resolved_post = _resolve_post_name(session, work_part, output_dir, log)
-    ok = _postprocess(setup, target, resolved_post, output_path, log)
-    if not ok:
-        log.write("Automatic postprocess was not completed; hierarchy cache is still available.")
+    try:
+        resolved_post = _resolve_post_name(session, work_part, output_dir, log)
+        ok = _postprocess(setup, target, resolved_post, output_path, log)
+        if not ok:
+            log.write("Automatic postprocess was not completed; hierarchy cache is still available.")
+    finally:
+        restore_env()
 
 
 if __name__ == "__main__":
